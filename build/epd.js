@@ -2937,7 +2937,7 @@ if (typeof(window) !== "undefined") {
 
     , _decryptContactKeys = function (foreignProfile, profile) {
         $.Iterator.each(foreignProfile.contacts, function (contactId, container) {
-          if (container.publicKey === $.Crypt.Coder.encode(profile.publicKey)) {
+          if (profile && profile.publicKey && container.publicKey === $.Crypt.Coder.encode(profile.publicKey)) {
             container.keys =
               $.Crypt.Asymmetric.Object.decrypt(
                 $.Crypt.Coder.decode(container.keys), profile.publicKey, profile.privateKey);
@@ -2953,19 +2953,21 @@ if (typeof(window) !== "undefined") {
       }
 
     , _decryptSections = function (foreignProfile, profile) {
-        var keys = foreignProfile.contacts[profile.id] ? foreignProfile.contacts[profile.id].keys : undefined;
-        $.Iterator.each(foreignProfile.sections, function (id, encryptedSection) {
-          if ($.Iterator.include($.Sections.openIds, id)) {
-            foreignProfile.sections[id] = encryptedSection;
-          } else {
-            var key = keys ? keys[id] : undefined;
-            if (key) {
-              foreignProfile.sections[id] = $.Crypt.Symmetric.Object.decrypt($.Crypt.Coder.decode(encryptedSection), key);
+        if (profile && profile.id) {
+          var keys = foreignProfile.contacts[profile.id] ? foreignProfile.contacts[profile.id].keys : undefined;
+          $.Iterator.each(foreignProfile.sections, function (id, encryptedSection) {
+            if ($.Iterator.include($.Sections.openIds, id)) {
+              foreignProfile.sections[id] = encryptedSection;
             } else {
-              delete(foreignProfile.sections[id]);
+              var key = keys ? keys[id] : undefined;
+              if (key) {
+                foreignProfile.sections[id] = $.Crypt.Symmetric.Object.decrypt($.Crypt.Coder.decode(encryptedSection), key);
+              } else {
+                delete(foreignProfile.sections[id]);
+              }
             }
-          }
-        });
+          });
+        }
       };
 
   $$$.unlock = function (foreignProfile, profile) {
