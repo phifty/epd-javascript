@@ -53,6 +53,11 @@ describe("Foreign.Locker", function () {
       expect(epdRoot.Sections.byId(profile, "closed")).toBeUndefined();
     });
 
+    it("should decode the profile only if no current profile is given", function () {
+      var unlockedProfile = namespace.unlock(fixtures.lockedProfile(), undefined);
+      expect(unlockedProfile.publicKey).toBeOfType("rsaKey");
+    });
+
   });
 
 });
