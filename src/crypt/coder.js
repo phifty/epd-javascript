@@ -160,7 +160,7 @@
   };
 
   $$$.ensureType = function (type, value) {
-    if (type !== value.type) {
+    if (!value || type !== value.type) {
       throw(new Error("The value " + JSON.stringify(value) + " need to be of type " + type + "!"));
     }
   };

@@ -4,8 +4,10 @@ describe("Foreign.Modules", function () {
   var namespace = epdRoot.Foreign.Modules
     , profile
     , anotherProfile
-    , profiles = { }
-    , hangOutId;
+    , hangOutId
+    , profileGetFunction = function (id) {
+        return anotherProfile && anotherProfile.id === id ? anotherProfile : undefined;
+      };
 
   beforeEach(function () {
     if (!profile) {
@@ -22,8 +24,6 @@ describe("Foreign.Modules", function () {
       epdRoot.Modules.add(anotherProfile, hangOutId, "build_in:com.anyaku.Forum");
 
       epdRoot.Modules.byId(anotherProfile, hangOutId, "build_in:com.anyaku.Forum").content = { test: "value" };
-
-      profiles[ anotherProfile.id ] = anotherProfile;
     }
   });
 
@@ -39,12 +39,12 @@ describe("Foreign.Modules", function () {
   describe("#contents", function () {
 
     it("should return an object with the module contents of all contacts of the given profile", function () {
-      var contents = namespace.contents(profile, "build_in:com.anyaku.Forum", profiles);
+      var contents = namespace.contents(profile, "build_in:com.anyaku.Forum", profileGetFunction);
       expect(contents[ anotherProfile.id ][ hangOutId ]).toEqual({ test: "value" });
     });
 
     it("should return an empty object if the module id could not be found", function () {
-      var contents = namespace.contents(profile, "missing", profiles);
+      var contents = namespace.contents(profile, "missing", profileGetFunction);
       expect(contents).toEqual({ });
     });
 
@@ -53,19 +53,19 @@ describe("Foreign.Modules", function () {
   describe("#contentsForSection", function () {
 
     it("should return an object with the module contents of all contacts of the given profile", function () {
-      var contents = namespace.contentsForSection(profile, hangOutId, "build_in:com.anyaku.Forum", profiles)
+      var contents = namespace.contentsForSection(profile, hangOutId, "build_in:com.anyaku.Forum", profileGetFunction)
         , expectedContents = { };
       expectedContents[ anotherProfile.id ] = { test: "value" };
       expect(contents).toEqual(expectedContents);
     });
 
     it("should return an empty object if the section id could not be found", function () {
-      var contents = namespace.contentsForSection(profile, "missing", "build_in:com.anyaku.Forum", profiles);
+      var contents = namespace.contentsForSection(profile, "missing", "build_in:com.anyaku.Forum", profileGetFunction);
       expect(contents).toEqual({ });
     });
 
     it("should return an empty object if the module id could not be found", function () {
-      var contents = namespace.contentsForSection(profile, hangOutId, "missing", profiles);
+      var contents = namespace.contentsForSection(profile, hangOutId, "missing", profileGetFunction);
       expect(contents).toEqual({ });
     });
 

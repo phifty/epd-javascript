@@ -35,10 +35,16 @@ describe("Crypt.Coder", function () {
 
   describe("#ensureType", function () {
 
-    it("should throw an error is the given object doesn't have the given type", function () {
+    it("should throw an error if the given object doesn't have the given type", function () {
       expect(function () {
         namespace.ensureType("test", { type: "something_else" });
       }).toThrow("The value {\"type\":\"something_else\"} need to be of type test!");
+    });
+
+    it("should throw an error if undefined is given", function () {
+      expect(function () {
+        namespace.ensureType("test", undefined);
+      }).toThrow("The value undefined need to be of type test!");
     });
 
   });
