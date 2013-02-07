@@ -102,17 +102,17 @@
     return !!hangOut && !!hangOut.administrationDelegatedTo;
   };
 
-  $$$.followAllDelegations = function (profile, profiles) {
+  $$$.followAllDelegations = function (profile, profileGetFunction) {
     var result = { };
 
     $.Iterator.each($$$.ids(profile), function (_, id) {
-      result[ id ] = $$$.followDelegation(profile, profiles, id);
+      result[ id ] = $$$.followDelegation(profile, id, profileGetFunction);
     });
 
     return result;
   };
 
-  $$$.followDelegation = function (profile, profiles, id) {
+  $$$.followDelegation = function (profile, id, profileGetFunction) {
     var result = { }
 
       , findDelegationTargetProfile = function () {
@@ -120,7 +120,7 @@
 
           while (result && $$$.isDelegated(result, id)) {
             var nextProfileId = $$$.delegatedTo(result, id)
-              , nextProfile = profiles[ nextProfileId ];
+              , nextProfile = profileGetFunction(nextProfileId);
 
             if (nextProfileId === profile.id) {
               return profile;

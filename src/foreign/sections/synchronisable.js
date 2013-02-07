@@ -23,12 +23,12 @@
     return $.Sections.Synchronisable.isDelegated(foreignProfile, id);
   };
 
-  $$$$.offered = function (profiles, profile) {
+  $$$$.offered = function (profile, profileGetFunction) {
     var contactIds = $.Contacts.ids(profile)
       , result = { };
 
     $.Iterator.each(contactIds, function (_, contactId) {
-      var foreignProfile = profiles[ contactId ];
+      var foreignProfile = profileGetFunction(contactId);
       if (foreignProfile) {
         var hangOutIds = $$$$.ids(foreignProfile);
         $.Iterator.each(hangOutIds, function (_, hangOutId) {
@@ -43,7 +43,7 @@
     return result;
   };
 
-  $$$$.differences = function (profiles, profile, id) {
+  $$$$.differences = function (profile, id, profileGetFunction) {
     var memberIds = $.Sections.Synchronisable.memberIds(profile, id)
       , moduleIds = $.Modules.ids(profile, id)
       , notParticipating = { }
@@ -65,7 +65,7 @@
         };
 
     $.Iterator.each(memberIds, function (_, memberId) {
-      var foreignProfile = profiles[memberId];
+      var foreignProfile = profileGetFunction(memberId);
       if (memberId !== profile.id && foreignProfile && !$$$$.isDelegated(foreignProfile, id)) {
         if ($$$$.exists(foreignProfile, id)) {
           var foreignMemberIds = $$$$.memberIds(foreignProfile, id)

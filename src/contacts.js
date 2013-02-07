@@ -2,10 +2,6 @@
 (function ($, $$) {
   "use strict";
 
-  var _lookupProfile = function (profile, profiles, id) {
-        return profiles[id] ? profiles[id] : { id: id, publicKey: $$.publicKeyForContactId(profile, id) };
-      };
-
   $$.ids = function (profile) {
     var ids = [ ];
     $.Iterator.each(profile.contacts, function (id) {
@@ -58,11 +54,11 @@
     return profile;
   };
 
-  $$.ensureAdded = function (profile, ids, profiles) {
+  $$.ensureAdded = function (profile, ids, profileGetFunction) {
     var contactIds = $$.ids(profile);
 
     $.Iterator.each(ids, function (_, id) {
-      var contactProfile = profiles[ id ];
+      var contactProfile = profileGetFunction(id);
       if (contactProfile && !$.Iterator.include(contactIds, id)) {
         profile = $$.add(profile, contactProfile.id, contactProfile.publicKey);
       }

@@ -4,15 +4,15 @@ describe("Contacts", function () {
   var namespace = epdRoot.Contacts
     , profile
     , otherProfile
-    , profiles = { };
+    , profileGetFunction = function (id) {
+        return otherProfile && otherProfile.id === id ? otherProfile : undefined;
+      };
 
   beforeEach(function () {
     profile = epdRoot.Object.clone(fixtures.profile());
 
     if (!otherProfile) {
       otherProfile = epdRoot.Generator.generate();
-
-      profiles[ otherProfile.id ] = otherProfile;
     }
   });
 
@@ -92,7 +92,7 @@ describe("Contacts", function () {
   describe("#ensureAdded", function () {
 
     it("should add the given contact if missing", function () {
-      profile = namespace.ensureAdded(profile, [ otherProfile.id ], profiles);
+      profile = namespace.ensureAdded(profile, [ otherProfile.id ], profileGetFunction);
       expect(namespace.ids(profile)).toContain(otherProfile.id);
     });
 

@@ -152,7 +152,11 @@ describe("Sections.Synchronisable", function () {
 
     var anotherProfile
       , yetAnotherProfile
-      , profiles = { };
+      , profileGetFunction = function (id) {
+          if (anotherProfile && anotherProfile.id === id) { return anotherProfile; }
+          if (yetAnotherProfile && yetAnotherProfile.id === id) { return yetAnotherProfile; }
+          return undefined;
+        };
 
     beforeEach(function () {
       if (!anotherProfile) {
@@ -164,9 +168,6 @@ describe("Sections.Synchronisable", function () {
         epdRoot.Contacts.add(profile, yetAnotherProfile.id, yetAnotherProfile.publicKey);
         epdRoot.Contacts.add(anotherProfile, profile.id, profile.publicKey);
         epdRoot.Contacts.add(anotherProfile, yetAnotherProfile.id, yetAnotherProfile.publicKey);
-
-        profiles[ anotherProfile.id ] = anotherProfile;
-        profiles[ yetAnotherProfile.id ] = yetAnotherProfile;
       }
 
       namespace.addMember(profile, anotherProfile.id, testId);
@@ -176,14 +177,14 @@ describe("Sections.Synchronisable", function () {
     });
 
     it("should return an empty hash if nothing has changed", function () {
-      var changes = namespace.followDelegation(profile, profiles, testId);
+      var changes = namespace.followDelegation(profile, testId, profileGetFunction);
       expect(changes).toEqual({ });
     });
 
     it("should return the new member ids if the delegation target has added a member", function () {
       namespace.addMember(anotherProfile, yetAnotherProfile.id, testId);
 
-      var changes = namespace.followDelegation(profile, profiles, testId);
+      var changes = namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(changes.addMembers).toEqual([ yetAnotherProfile.id ]);
     });
@@ -191,7 +192,7 @@ describe("Sections.Synchronisable", function () {
     it("should return the new module ids if the delegation target has added a module", function () {
       epdRoot.Modules.add(anotherProfile, testId, "build_in:com.anyaku.Forum");
 
-      var changes = namespace.followDelegation(profile, profiles, testId);
+      var changes = namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(changes.addModules).toEqual([ "build_in:com.anyaku.Forum" ]);
     });
@@ -202,17 +203,18 @@ describe("Sections.Synchronisable", function () {
       namespace.addMember(anotherProfile, yetAnotherProfile.id, testId);
       namespace.delegateTo(anotherProfile, yetAnotherProfile.id, testId);
 
-      namespace.followDelegation(profile, profiles, testId);
+      namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(namespace.delegatedTo(profile, testId)).toEqual(yetAnotherProfile.id);
     });
 
-    it("should keep the delegation if the delegation target is not yet loaded", function () {
+    it("should keep the delegation if the delegation target can't be fetched", function () {
       namespace.delegateTo(anotherProfile, yetAnotherProfile.id, testId);
 
-      profiles[ yetAnotherProfile.id ] = undefined;
-      namespace.followDelegation(profile, profiles, testId);
-      profiles[ yetAnotherProfile.id ] = yetAnotherProfile;
+      var save = yetAnotherProfile;
+      yetAnotherProfile = undefined;
+      namespace.followDelegation(profile, testId, profileGetFunction);
+      yetAnotherProfile = save;
 
       expect(namespace.delegatedTo(profile, testId)).toEqual(anotherProfile.id);
     });
@@ -220,7 +222,7 @@ describe("Sections.Synchronisable", function () {
     it("should remove the delegation if the path goes back to the own profile", function () {
       namespace.delegateTo(anotherProfile, profile.id, testId);
 
-      namespace.followDelegation(profile, profiles, testId);
+      namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(namespace.isDelegated(profile, testId)).toBeFalsy();
     });
@@ -229,13 +231,13 @@ describe("Sections.Synchronisable", function () {
       namespace.addMember(anotherProfile, yetAnotherProfile.id, testId);
       namespace.removeDelegation(profile, testId);
 
-      var changes = namespace.followDelegation(profile, profiles, testId);
+      var changes = namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(changes).toEqual({ });
     });
 
     it("should remove the delegation if the foreign profile is missing", function () {
-      namespace.followDelegation(profile, { }, testId);
+      namespace.followDelegation(profile, testId, function () { return undefined; });
 
       expect(namespace.isDelegated(profile, testId)).toBeFalsy();
     });
@@ -243,7 +245,7 @@ describe("Sections.Synchronisable", function () {
     it("should remove the delegation if the profile where the delegation goes to removed the hang out", function () {
       namespace.remove(anotherProfile, testId);
 
-      namespace.followDelegation(profile, profiles, testId);
+      namespace.followDelegation(profile, testId, profileGetFunction);
 
       expect(namespace.isDelegated(profile, testId)).toBeFalsy();
     });
