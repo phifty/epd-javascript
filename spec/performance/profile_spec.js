@@ -30,8 +30,8 @@ describe("Performance", function () {
         sizes.push(profileSize());
       }
 
-      var accelerations = epdRoot.Iterator.pair(epdRoot.Iterator.pair(sizes, difference), difference)
-        , average = epdRoot.Iterator.reduce(accelerations, 0, function (result, acceleration) {
+      var accelerations = epdRoot.Collection.pair(epdRoot.Collection.pair(sizes, difference), difference)
+        , average = epdRoot.Collection.reduce(accelerations, 0, function (result, acceleration) {
             return result + acceleration;
           }) / accelerations.length;
 
@@ -50,8 +50,8 @@ describe("Performance", function () {
         sizes.push(profileSize());
       }
 
-      var grows = epdRoot.Iterator.pair(sizes, difference)
-        , average = epdRoot.Iterator.reduce(grows, 0, function (result, grow) {
+      var grows = epdRoot.Collection.pair(sizes, difference)
+        , average = epdRoot.Collection.reduce(grows, 0, function (result, grow) {
             return result + grow;
           }) / grows.length;
 

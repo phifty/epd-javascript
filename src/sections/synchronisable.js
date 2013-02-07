@@ -3,7 +3,7 @@
   "use strict";
 
   $$$.ids = function (profile) {
-    return $.Iterator.select($$.ids(profile), function (index, id) {
+    return $.Collection.select($$.ids(profile), function (index, id) {
       return $$$.isSynchronisable(profile, id);
     });
   };
@@ -35,7 +35,7 @@
   };
 
   $$$.memberIds = function (profile, id) {
-    return $.Iterator.select($.Contacts.ids(profile), function (_, contactId) {
+    return $.Collection.select($.Contacts.ids(profile), function (_, contactId) {
       return $$$.isMember(profile, contactId, id);
     });
   };
@@ -56,13 +56,13 @@
     }
 
     var section = $$$.byId(profile, id);
-    $.Iterator.remove(section.members, contactId);
+    $.Collection.remove(section.members, contactId);
     return $$.removeMember(profile, contactId, id);
   };
 
   $$$.isMember = function (profile, contactId, id) {
     var section = $$$.byId(profile, id);
-    return $$.isMember(profile, contactId, id) && $.Iterator.include(section.members, contactId);
+    return $$.isMember(profile, contactId, id) && $.Collection.include(section.members, contactId);
   };
 
   // high level
@@ -147,16 +147,16 @@
           $$$.delegateTo(profile, targetProfile.id, id);
         }
 
-        if ($.Iterator.include($.Foreign.Sections.Synchronisable.ids(targetProfile), id)) {
+        if ($.Collection.include($.Foreign.Sections.Synchronisable.ids(targetProfile), id)) {
           var memberIds = [ profile.id ].concat($$$.memberIds(profile, id))
             , targetMemberIds = [ targetProfile.id ].concat($.Foreign.Sections.Synchronisable.memberIds(targetProfile, id))
-            , addMemberIds = $.Iterator.without(targetMemberIds, memberIds)
-            , removeMemberIds = $.Iterator.without(memberIds, targetMemberIds)
+            , addMemberIds = $.Collection.without(targetMemberIds, memberIds)
+            , removeMemberIds = $.Collection.without(memberIds, targetMemberIds)
 
             , moduleIds = $.Modules.ids(profile, id)
             , targetModuleIds = $.Foreign.Modules.ids(targetProfile, id)
-            , addModuleIds = $.Iterator.without(targetModuleIds, moduleIds)
-            , removeModuleIds = $.Iterator.without(moduleIds, targetModuleIds);
+            , addModuleIds = $.Collection.without(targetModuleIds, moduleIds)
+            , removeModuleIds = $.Collection.without(moduleIds, targetModuleIds);
 
           if (addMemberIds.length > 0) { result.addMembers = addMemberIds; }
           if (removeMemberIds.length > 0) { result.removeMembers = removeMemberIds; }

@@ -13,7 +13,7 @@
   };
 
   $$.idsBySectionId = function (profile, sectionId) {
-    return $.Iterator.select($$.ids(profile), function (index, id) {
+    return $.Collection.select($$.ids(profile), function (index, id) {
       return !!profile.contacts[id].keys[sectionId];
     });
   };
@@ -59,7 +59,7 @@
 
     $.Iterator.each(ids, function (_, id) {
       var contactProfile = profileGetFunction(id);
-      if (contactProfile && !$.Iterator.include(contactIds, id)) {
+      if (contactProfile && !$.Collection.include(contactIds, id)) {
         profile = $$.add(profile, contactProfile.id, contactProfile.publicKey);
       }
     });
@@ -71,7 +71,7 @@
     var contactIds = $$.ids(profile);
 
     $.Iterator.each(ids, function (_, id) {
-      if ($.Iterator.include(contactIds, id)) {
+      if ($.Collection.include(contactIds, id)) {
         profile = $$.remove(profile, id);
       }
     });

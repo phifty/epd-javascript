@@ -3,7 +3,16 @@ describe("Object", function () {
 
   var namespace = epdRoot.Object;
 
-  describe("clone", function () {
+  describe("#keys", function () {
+
+    it("should return an array with the keys of the given object", function () {
+      var keys = namespace.keys({ test: "value", another: "test value" });
+      expect(keys).toEqual([ "test", "another" ]);
+    });
+
+  });
+
+  describe("#clone", function () {
 
     var object = { test: "value", nested: { test: "value" } };
 
@@ -15,7 +24,7 @@ describe("Object", function () {
 
   });
 
-  describe("valueIn", function () {
+  describe("#valueIn", function () {
 
     it("should return a the value from a nested object structure specified by the given data path", function () {
       var value = namespace.valueIn({ nested: { test: "value" } }, "nested.test");
@@ -24,7 +33,7 @@ describe("Object", function () {
 
   });
 
-  describe("stringify", function () {
+  describe("#stringify", function () {
 
     it("should return the string version of the given number", function () {
       var result = namespace.stringify(3);

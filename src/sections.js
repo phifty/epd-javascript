@@ -9,7 +9,7 @@
   $$.ids = function (profile) {
     var results = [ ];
     $.Iterator.each(profile.sections, function (id) {
-      if (!$.Iterator.include($$.fixedIds, id)) {
+      if (!$.Collection.include($$.fixedIds, id)) {
         results.push(id);
       }
     });
@@ -49,7 +49,7 @@
   };
 
   $$.memberIds = function (profile, id) {
-    return $.Iterator.select($.Contacts.ids(profile), function (_, contactId) {
+    return $.Collection.select($.Contacts.ids(profile), function (_, contactId) {
       return $$.isMember(profile, contactId, id);
     });
   };
@@ -74,21 +74,21 @@
     }
 
     var container = profile.contacts[contactId];
-    $.Iterator.remove(container.sections, id);
+    $.Collection.remove(container.sections, id);
     delete(container.keys[id]);
 
     return profile;
   };
 
   $$.isMember = function (profile, contactId, id) {
-    return ($.Iterator.include($$.openIds, id)) ||
+    return ($.Collection.include($$.openIds, id)) ||
            (!!profile.contacts[contactId] &&
              !!profile.contacts[contactId].keys &&
              !!profile.contacts[contactId].keys[id]);
   };
 
   $$.findKey = function (contacts, id) {
-    var result = $.Iterator.detect(contacts, function (_, container) {
+    var result = $.Collection.detect(contacts, function (_, container) {
       return !!container.keys && !!container.keys[id];
     });
     return result ? result.keys[id] : undefined;
@@ -120,7 +120,7 @@
     base = base || $$;
 
     // remove member ids, that are not on the list
-    base.removeMembers(profile, $.Iterator.without(base.memberIds(profile, id), contactIds), id, base);
+    base.removeMembers(profile, $.Collection.without(base.memberIds(profile, id), contactIds), id, base);
 
     // add member ids, that are not allowed yet
     base.addMembers(profile, contactIds, id, base);

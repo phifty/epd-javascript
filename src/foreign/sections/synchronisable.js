@@ -69,15 +69,15 @@
       if (memberId !== profile.id && foreignProfile && !$$$$.isDelegated(foreignProfile, id)) {
         if ($$$$.exists(foreignProfile, id)) {
           var foreignMemberIds = $$$$.memberIds(foreignProfile, id)
-            , addMemberIds = $.Iterator.without(foreignMemberIds, memberIds)
-            , removeMemberIds = $.Iterator.without(memberIds, foreignMemberIds)
+            , addMemberIds = $.Collection.without(foreignMemberIds, memberIds)
+            , removeMemberIds = $.Collection.without(memberIds, foreignMemberIds)
 
             , foreignModuleIds = $$.Modules.ids(foreignProfile, id)
-            , addModuleIds = $.Iterator.without(foreignModuleIds, moduleIds)
-            , removeModuleIds = $.Iterator.without(moduleIds, foreignModuleIds);
+            , addModuleIds = $.Collection.without(foreignModuleIds, moduleIds)
+            , removeModuleIds = $.Collection.without(moduleIds, foreignModuleIds);
 
-          $.Iterator.remove(addMemberIds, profile.id);
-          $.Iterator.remove(removeMemberIds, foreignProfile.id);
+          $.Collection.remove(addMemberIds, profile.id);
+          $.Collection.remove(removeMemberIds, foreignProfile.id);
 
           pushMember(addMembers, addMemberIds, memberId);
           pushMember(removeMembers, removeMemberIds, memberId);

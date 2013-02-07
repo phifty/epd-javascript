@@ -2,6 +2,14 @@
 (function ($, $$) {
   "use strict";
 
+  $$.keys = function (object) {
+    var keys = [ ];
+    $.Iterator.each(object, function (key) {
+      keys.push(key);
+    });
+    return keys;
+  };
+
   $$.clone = function (object) {
     if (!object) {
       return object;
@@ -42,7 +50,7 @@
   };
 
   $$.valueIn = function (object, dataPath) {
-    return $.Iterator.reduce(dataPath ? dataPath.split(".") : [ ], object, function (result, attribute) {
+    return $.Collection.reduce(dataPath ? dataPath.split(".") : [ ], object, function (result, attribute) {
       return result ? result[attribute] : result;
     });
   };
@@ -54,9 +62,9 @@
       case "string":
         return object;
       case "object":
-        var keys = $.Iterator.keys(object);
+        var keys = $$.keys(object);
         keys.sort();
-        return $.Iterator.reduce(keys, "", function (result, key) {
+        return $.Collection.reduce(keys, "", function (result, key) {
           var value = object[key];
           return result + (value === undefined ? "" : key + $$.stringify(value));
         });

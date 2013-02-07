@@ -31,7 +31,7 @@
         if (profile && profile.id) {
           var keys = foreignProfile.contacts[profile.id] ? foreignProfile.contacts[profile.id].keys : undefined;
           $.Iterator.each(foreignProfile.sections, function (id, encryptedSection) {
-            if ($.Iterator.include($.Sections.openIds, id)) {
+            if ($.Collection.include($.Sections.openIds, id)) {
               foreignProfile.sections[id] = encryptedSection;
             } else {
               var key = keys ? keys[id] : undefined;

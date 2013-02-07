@@ -4,7 +4,7 @@
 
   var _encryptSections = function (profile) {
         $.Iterator.each(profile.sections, function (id, section) {
-          if ($.Iterator.include($.Sections.openIds, id)) {
+          if ($.Collection.include($.Sections.openIds, id)) {
             profile.sections[id] = section;
           } else {
             var key = $.Sections.findKey(profile.contacts, id);
@@ -116,7 +116,7 @@
         var keys = profile.contacts[profile.id] ? profile.contacts[profile.id].keys : undefined;
         if (!keys) { return; }
         $.Iterator.each(profile.sections, function (id, encryptedSection) {
-          if ($.Iterator.include($.Sections.openIds, id)) {
+          if ($.Collection.include($.Sections.openIds, id)) {
             profile.sections[id] = encryptedSection;
           } else {
             var key = keys[id];

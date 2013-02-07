@@ -4,7 +4,7 @@
 
   $$.ids = function (profile, sectionId) {
     var section = $.Sections.byId(profile, sectionId);
-    return section ? $.Iterator.keys(section.modules) : [ ];
+    return section ? $.Object.keys(section.modules) : [ ];
   };
 
   $$.exists = function (profile, sectionId, id) {
@@ -22,7 +22,7 @@
   $$.ensureOnly = function (profile, sectionId, ids) {
     // remove modules, that are not on the list
     $.Iterator.each($$.ids(profile, sectionId), function (index, id) {
-      if (!$.Iterator.include(ids, id)) {
+      if (!$.Collection.include(ids, id)) {
         profile = $$.remove(profile, sectionId, id);
       }
     });
@@ -40,7 +40,7 @@
   $$.ensureAdded = function (profile, sectionId, ids) {
     var moduleIds = $$.ids(profile, sectionId);
     $.Iterator.each(ids, function (_, id) {
-      if (!$.Iterator.include(moduleIds, id)) {
+      if (!$.Collection.include(moduleIds, id)) {
         profile = $$.add(profile, sectionId, id);
       }
     });
@@ -50,7 +50,7 @@
   $$.ensureRemoved = function (profile, sectionId, ids) {
     var moduleIds = $$.ids(profile, sectionId);
     $.Iterator.each(ids, function (_, id) {
-      if ($.Iterator.include(moduleIds, id)) {
+      if ($.Collection.include(moduleIds, id)) {
         profile = $$.remove(profile, sectionId, id);
       }
     });
