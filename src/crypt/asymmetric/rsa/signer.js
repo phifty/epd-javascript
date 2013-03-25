@@ -12,11 +12,9 @@
         ripemd160: "3021300906052b2403020105000414"
       }
     , _RSASIGN_HASHHEXFUNC = {
-        sha1: function (s) { return hex_sha1(s); },
-        sha256: function (s) { return hex_sha256(s); },
-        sha512: function (s) { return hex_sha512(s); },
-        md5: function (s) { return hex_md5(s); },
-        ripemd160: function (s) { return hex_rmd160(s); }
+        sha256: function (s) {
+          return CryptoJS.enc.Hex.stringify(CryptoJS.SHA256(s));
+        }
       }
     , _RE_HEXDECONLY = new RegExp("")
 

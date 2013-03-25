@@ -2,7 +2,6 @@
 //= require ./crypt/rsa/jsbn2.js
 //= require ./crypt/rsa/rng.js
 //= require ./crypt/rsa/prng4.js
-//= require ./crypt/rsa/sha256.js
 
 //= require ./crypt/md5.js
 //= require ./crypt/aes.js
