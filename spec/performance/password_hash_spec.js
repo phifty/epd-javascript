@@ -10,7 +10,6 @@ describe("Performance", function () {
       var durations = benchmark.measureEach([ 1, 10, 100, 1000, 10000 ], function (iterations) {
         epdRoot.Crypt.Password.hash(password, { iterations: iterations, keySize: keySize })
       });
-      console.log(durations);
     });
 
   });
