@@ -6,4 +6,5 @@
 //= require ./crypt/md5.js
 //= require ./crypt/aes.js
 //= require ./crypt/sha1.js
+//= require ./crypt/sha256.js
 //= require ./crypt/pbkdf2.js
