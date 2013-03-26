@@ -1327,889 +1327,98 @@ function prng_newstate() {
 // Pool size must be a multiple of 4 and greater than 32.
 // An array of bytes the size of the pool will be passed to init()
 var rng_psize = 256;
-// Depends on jsbn.js and rng.js
-
-// Version 1.1: support utf-8 encoding in pkcs1pad2
-
-// convert a (hex) string to a bignum object
-function parseBigInt(str,r) {
-  return new BigInteger(str,r);
-}
-
-function linebrk(s,n) {
-  var ret = "";
-  var i = 0;
-  while(i + n < s.length) {
-    ret += s.substring(i,i+n) + "\n";
-    i += n;
-  }
-  return ret + s.substring(i,s.length);
-}
-
-function byte2Hex(b) {
-  if(b < 0x10)
-    return "0" + b.toString(16);
-  else
-    return b.toString(16);
-}
-
-// PKCS#1 (type 2, random) pad input string s to n bytes, and return a bigint
-function pkcs1pad2(s,n) {
-  if(n < s.length + 11) { // TODO: fix for utf-8
-    throw(new Error("Message too long for RSA"));
-  }
-  var ba = new Array();
-  var i = s.length - 1;
-  while(i >= 0 && n > 0) {
-    var c = s.charCodeAt(i--);
-    if(c < 128) { // encode using utf-8
-      ba[--n] = c;
-    }
-    else if((c > 127) && (c < 2048)) {
-      ba[--n] = (c & 63) | 128;
-      ba[--n] = (c >> 6) | 192;
-    }
-    else {
-      ba[--n] = (c & 63) | 128;
-      ba[--n] = ((c >> 6) & 63) | 128;
-      ba[--n] = (c >> 12) | 224;
-    }
-  }
-  ba[--n] = 0;
-  var rng = new SecureRandom();
-  var x = new Array();
-  while(n > 2) { // random non-zero pad
-    x[0] = 0;
-    while(x[0] == 0) rng.nextBytes(x);
-    ba[--n] = x[0];
-  }
-  ba[--n] = 2;
-  ba[--n] = 0;
-  return new BigInteger(ba);
-}
-
-// "empty" RSA key constructor
-function RSAKey() {
-  this.n = null;
-  this.e = 0;
-  this.d = null;
-  this.p = null;
-  this.q = null;
-  this.dmp1 = null;
-  this.dmq1 = null;
-  this.coeff = null;
-}
-
-// Set the public key fields N and e from hex strings
-function RSASetPublic(N,E) {
-  if(N != null && E != null && N.length > 0 && E.length > 0) {
-    this.n = parseBigInt(N,16);
-    this.e = parseInt(E,16);
-  }
-  else
-    throw(new Error("Invalid RSA public key"));
-}
-
-// Perform raw public operation on "x": return x^e (mod n)
-function RSADoPublic(x) {
-  return x.modPowInt(this.e, this.n);
-}
-
-// Return the PKCS#1 RSA encryption of "text" as an even-length hex string
-function RSAEncrypt(text) {
-  var m = pkcs1pad2(text,(this.n.bitLength()+7)>>3);
-  if(m == null) return null;
-  var c = this.doPublic(m);
-  if(c == null) return null;
-  var h = c.toString(16);
-  if((h.length & 1) == 0) return h; else return "0" + h;
-}
-
-// Return the PKCS#1 RSA encryption of "text" as a Base64-encoded string
-//function RSAEncryptB64(text) {
-//  var h = this.encrypt(text);
-//  if(h) return hex2b64(h); else return null;
-//}
-
-// protected
-RSAKey.prototype.doPublic = RSADoPublic;
-
-// public
-RSAKey.prototype.setPublic = RSASetPublic;
-RSAKey.prototype.encrypt = RSAEncrypt;
-//RSAKey.prototype.encrypt_b64 = RSAEncryptB64;
-// Depends on rsa.js and jsbn2.js
-
-// Version 1.1: support utf-8 decoding in pkcs1unpad2
-
-// Undo PKCS#1 (type 2, random) padding and, if valid, return the plaintext
-function pkcs1unpad2(d,n) {
-  var b = d.toByteArray();
-  var i = 0;
-  while(i < b.length && b[i] == 0) ++i;
-  if(b.length-i != n-1 || b[i] != 2)
-    return null;
-  ++i;
-  while(b[i] != 0)
-    if(++i >= b.length) return null;
-  var ret = "";
-  while(++i < b.length) {
-    var c = b[i] & 255;
-    if(c < 128) { // utf-8 decode
-      ret += String.fromCharCode(c);
-    }
-    else if((c > 191) && (c < 224)) {
-      ret += String.fromCharCode(((c & 31) << 6) | (b[i+1] & 63));
-      ++i;
-    }
-    else {
-      ret += String.fromCharCode(((c & 15) << 12) | ((b[i+1] & 63) << 6) | (b[i+2] & 63));
-      i += 2;
-    }
-  }
-  return ret;
-}
-
-// Set the private key fields N, e, and d from hex strings
-function RSASetPrivate(N,E,D) {
-  if(N != null && E != null && N.length > 0 && E.length > 0) {
-    this.n = parseBigInt(N,16);
-    this.e = parseInt(E,16);
-    this.d = parseBigInt(D,16);
-  }
-  else
-    throw(new Error("Invalid RSA private key"));
-}
-
-// Set the private key fields N, e, d and CRT params from hex strings
-function RSASetPrivateEx(N,E,D,P,Q,DP,DQ,C) {
-  if(N != null && E != null && N.length > 0 && E.length > 0) {
-    this.n = parseBigInt(N,16);
-    this.e = parseInt(E,16);
-    this.d = parseBigInt(D,16);
-    this.p = parseBigInt(P,16);
-    this.q = parseBigInt(Q,16);
-    this.dmp1 = parseBigInt(DP,16);
-    this.dmq1 = parseBigInt(DQ,16);
-    this.coeff = parseBigInt(C,16);
-  }
-  else
-    throw(new Error("Invalid RSA private key"));
-}
-
-// Generate a new random private key B bits long, using public expt E
-function RSAGenerate(B,E) {
-  var rng = new SecureRandom();
-  var qs = B>>1;
-  this.e = parseInt(E,16);
-  var ee = new BigInteger(E,16);
-  for(;;) {
-    for(;;) {
-      this.p = new BigInteger(B-qs,1,rng);
-      if(this.p.subtract(BigInteger.ONE).gcd(ee).compareTo(BigInteger.ONE) == 0 && this.p.isProbablePrime(10)) break;
-    }
-    for(;;) {
-      this.q = new BigInteger(qs,1,rng);
-      if(this.q.subtract(BigInteger.ONE).gcd(ee).compareTo(BigInteger.ONE) == 0 && this.q.isProbablePrime(10)) break;
-    }
-    if(this.p.compareTo(this.q) <= 0) {
-      var t = this.p;
-      this.p = this.q;
-      this.q = t;
-    }
-    var p1 = this.p.subtract(BigInteger.ONE);
-    var q1 = this.q.subtract(BigInteger.ONE);
-    var phi = p1.multiply(q1);
-    if(phi.gcd(ee).compareTo(BigInteger.ONE) == 0) {
-      this.n = this.p.multiply(this.q);
-      this.d = ee.modInverse(phi);
-      this.dmp1 = this.d.mod(p1);
-      this.dmq1 = this.d.mod(q1);
-      this.coeff = this.q.modInverse(this.p);
-      break;
-    }
-  }
-}
-
-// Perform raw private operation on "x": return x^d (mod n)
-function RSADoPrivate(x) {
-  if(this.p == null || this.q == null)
-    return x.modPow(this.d, this.n);
-
-  // TODO: re-calculate any missing CRT params
-  var xp = x.mod(this.p).modPow(this.dmp1, this.p);
-  var xq = x.mod(this.q).modPow(this.dmq1, this.q);
-
-  while(xp.compareTo(xq) < 0)
-    xp = xp.add(this.p);
-  return xp.subtract(xq).multiply(this.coeff).mod(this.p).multiply(this.q).add(xq);
-}
-
-// Return the PKCS#1 RSA decryption of "ctext".
-// "ctext" is an even-length hex string and the output is a plain string.
-function RSADecrypt(ctext) {
-  var c = parseBigInt(ctext, 16);
-  var m = this.doPrivate(c);
-  if(m == null) return null;
-  return pkcs1unpad2(m, (this.n.bitLength()+7)>>3);
-}
-
-// Return the PKCS#1 RSA decryption of "ctext".
-// "ctext" is a Base64-encoded string and the output is a plain string.
-//function RSAB64Decrypt(ctext) {
-//  var h = b64tohex(ctext);
-//  if(h) return this.decrypt(h); else return null;
-//}
-
-// protected
-RSAKey.prototype.doPrivate = RSADoPrivate;
-
-// public
-RSAKey.prototype.setPrivate = RSASetPrivate;
-RSAKey.prototype.setPrivateEx = RSASetPrivateEx;
-RSAKey.prototype.generate = RSAGenerate;
-RSAKey.prototype.decrypt = RSADecrypt;
-//RSAKey.prototype.b64_decrypt = RSAB64Decrypt;
 /*
- * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
- * in FIPS 180-2
- * Version 2.2 Copyright Angel Marin, Paul Johnston 2000 - 2009.
- * Other contributors: Greg Holt, Andrew Kepert, Ydnar, Lostinet
- * Distributed under the BSD License
- * See http://pajhome.org.uk/crypt/md5 for details.
- * Also http://anmar.eu.org/projects/jssha2/
- */
-
-/*
- * Configurable variables. You may need to tweak these to be compatible with
- * the server-side, but the defaults work in most cases.
- */
-
-var hexcase = 0;  /* hex output format. 0 - lowercase; 1 - uppercase        */
-var b64pad  = ""; /* base-64 pad character. "=" for strict RFC compliance   */
-
-/*
- * These are the functions you'll usually want to call
- * They take string arguments and return either hex or base-64 encoded strings
- */
-function hex_sha256(s)    { return rstr2hex(rstr_sha256(str2rstr_utf8(s))); }
-function b64_sha256(s)    { return rstr2b64(rstr_sha256(str2rstr_utf8(s))); }
-function any_sha256(s, e) { return rstr2any(rstr_sha256(str2rstr_utf8(s)), e); }
-function hex_hmac_sha256(k, d)
-  { return rstr2hex(rstr_hmac_sha256(str2rstr_utf8(k), str2rstr_utf8(d))); }
-function b64_hmac_sha256(k, d)
-  { return rstr2b64(rstr_hmac_sha256(str2rstr_utf8(k), str2rstr_utf8(d))); }
-function any_hmac_sha256(k, d, e)
-  { return rstr2any(rstr_hmac_sha256(str2rstr_utf8(k), str2rstr_utf8(d)), e); }
-
-/*
- * Perform a simple self-test to see if the VM is working
- */
-function sha256_vm_test()
-{
-  return hex_sha256("abc").toLowerCase() ==
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-}
-
-/*
- * Calculate the sha256 of a raw string
- */
-function rstr_sha256(s)
-{
-  return binb2rstr(binb_sha256(rstr2binb(s), s.length * 8));
-}
-
-/*
- * Calculate the HMAC-sha256 of a key and some data (raw strings)
- */
-function rstr_hmac_sha256(key, data)
-{
-  var bkey = rstr2binb(key);
-  if(bkey.length > 16) bkey = binb_sha256(bkey, key.length * 8);
-
-  var ipad = Array(16), opad = Array(16);
-  for(var i = 0; i < 16; i++)
-  {
-    ipad[i] = bkey[i] ^ 0x36363636;
-    opad[i] = bkey[i] ^ 0x5C5C5C5C;
-  }
-
-  var hash = binb_sha256(ipad.concat(rstr2binb(data)), 512 + data.length * 8);
-  return binb2rstr(binb_sha256(opad.concat(hash), 512 + 256));
-}
-
-/*
- * Convert a raw string to a hex string
- */
-function rstr2hex(input)
-{
-  try { hexcase } catch(e) { hexcase=0; }
-  var hex_tab = hexcase ? "0123456789ABCDEF" : "0123456789abcdef";
-  var output = "";
-  var x;
-  for(var i = 0; i < input.length; i++)
-  {
-    x = input.charCodeAt(i);
-    output += hex_tab.charAt((x >>> 4) & 0x0F)
-           +  hex_tab.charAt( x        & 0x0F);
-  }
-  return output;
-}
-
-/*
- * Convert a raw string to a base-64 string
- */
-function rstr2b64(input)
-{
-  try { b64pad } catch(e) { b64pad=''; }
-  var tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  var output = "";
-  var len = input.length;
-  for(var i = 0; i < len; i += 3)
-  {
-    var triplet = (input.charCodeAt(i) << 16)
-                | (i + 1 < len ? input.charCodeAt(i+1) << 8 : 0)
-                | (i + 2 < len ? input.charCodeAt(i+2)      : 0);
-    for(var j = 0; j < 4; j++)
-    {
-      if(i * 8 + j * 6 > input.length * 8) output += b64pad;
-      else output += tab.charAt((triplet >>> 6*(3-j)) & 0x3F);
-    }
-  }
-  return output;
-}
-
-/*
- * Convert a raw string to an arbitrary string encoding
- */
-function rstr2any(input, encoding)
-{
-  var divisor = encoding.length;
-  var remainders = Array();
-  var i, q, x, quotient;
-
-  /* Convert to an array of 16-bit big-endian values, forming the dividend */
-  var dividend = Array(Math.ceil(input.length / 2));
-  for(i = 0; i < dividend.length; i++)
-  {
-    dividend[i] = (input.charCodeAt(i * 2) << 8) | input.charCodeAt(i * 2 + 1);
-  }
-
-  /*
-   * Repeatedly perform a long division. The binary array forms the dividend,
-   * the length of the encoding is the divisor. Once computed, the quotient
-   * forms the dividend for the next step. We stop when the dividend is zero.
-   * All remainders are stored for later use.
-   */
-  while(dividend.length > 0)
-  {
-    quotient = Array();
-    x = 0;
-    for(i = 0; i < dividend.length; i++)
-    {
-      x = (x << 16) + dividend[i];
-      q = Math.floor(x / divisor);
-      x -= q * divisor;
-      if(quotient.length > 0 || q > 0)
-        quotient[quotient.length] = q;
-    }
-    remainders[remainders.length] = x;
-    dividend = quotient;
-  }
-
-  /* Convert the remainders to the output string */
-  var output = "";
-  for(i = remainders.length - 1; i >= 0; i--)
-    output += encoding.charAt(remainders[i]);
-
-  /* Append leading zero equivalents */
-  var full_length = Math.ceil(input.length * 8 /
-                                    (Math.log(encoding.length) / Math.log(2)))
-  for(i = output.length; i < full_length; i++)
-    output = encoding[0] + output;
-
-  return output;
-}
-
-/*
- * Encode a string as utf-8.
- * For efficiency, this assumes the input is valid utf-16.
- */
-function str2rstr_utf8(input)
-{
-  var output = "";
-  var i = -1;
-  var x, y;
-
-  while(++i < input.length)
-  {
-    /* Decode utf-16 surrogate pairs */
-    x = input.charCodeAt(i);
-    y = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
-    if(0xD800 <= x && x <= 0xDBFF && 0xDC00 <= y && y <= 0xDFFF)
-    {
-      x = 0x10000 + ((x & 0x03FF) << 10) + (y & 0x03FF);
-      i++;
-    }
-
-    /* Encode output as utf-8 */
-    if(x <= 0x7F)
-      output += String.fromCharCode(x);
-    else if(x <= 0x7FF)
-      output += String.fromCharCode(0xC0 | ((x >>> 6 ) & 0x1F),
-                                    0x80 | ( x         & 0x3F));
-    else if(x <= 0xFFFF)
-      output += String.fromCharCode(0xE0 | ((x >>> 12) & 0x0F),
-                                    0x80 | ((x >>> 6 ) & 0x3F),
-                                    0x80 | ( x         & 0x3F));
-    else if(x <= 0x1FFFFF)
-      output += String.fromCharCode(0xF0 | ((x >>> 18) & 0x07),
-                                    0x80 | ((x >>> 12) & 0x3F),
-                                    0x80 | ((x >>> 6 ) & 0x3F),
-                                    0x80 | ( x         & 0x3F));
-  }
-  return output;
-}
-
-/*
- * Encode a string as utf-16
- */
-function str2rstr_utf16le(input)
-{
-  var output = "";
-  for(var i = 0; i < input.length; i++)
-    output += String.fromCharCode( input.charCodeAt(i)        & 0xFF,
-                                  (input.charCodeAt(i) >>> 8) & 0xFF);
-  return output;
-}
-
-function str2rstr_utf16be(input)
-{
-  var output = "";
-  for(var i = 0; i < input.length; i++)
-    output += String.fromCharCode((input.charCodeAt(i) >>> 8) & 0xFF,
-                                   input.charCodeAt(i)        & 0xFF);
-  return output;
-}
-
-/*
- * Convert a raw string to an array of big-endian words
- * Characters >255 have their high-byte silently ignored.
- */
-function rstr2binb(input)
-{
-  var output = Array(input.length >> 2);
-  for(var i = 0; i < output.length; i++)
-    output[i] = 0;
-  for(var i = 0; i < input.length * 8; i += 8)
-    output[i>>5] |= (input.charCodeAt(i / 8) & 0xFF) << (24 - i % 32);
-  return output;
-}
-
-/*
- * Convert an array of big-endian words to a string
- */
-function binb2rstr(input)
-{
-  var output = "";
-  for(var i = 0; i < input.length * 32; i += 8)
-    output += String.fromCharCode((input[i>>5] >>> (24 - i % 32)) & 0xFF);
-  return output;
-}
-
-/*
- * Main sha256 function, with its support functions
- */
-function sha256_S (X, n) {return ( X >>> n ) | (X << (32 - n));}
-function sha256_R (X, n) {return ( X >>> n );}
-function sha256_Ch(x, y, z) {return ((x & y) ^ ((~x) & z));}
-function sha256_Maj(x, y, z) {return ((x & y) ^ (x & z) ^ (y & z));}
-function sha256_Sigma0256(x) {return (sha256_S(x, 2) ^ sha256_S(x, 13) ^ sha256_S(x, 22));}
-function sha256_Sigma1256(x) {return (sha256_S(x, 6) ^ sha256_S(x, 11) ^ sha256_S(x, 25));}
-function sha256_Gamma0256(x) {return (sha256_S(x, 7) ^ sha256_S(x, 18) ^ sha256_R(x, 3));}
-function sha256_Gamma1256(x) {return (sha256_S(x, 17) ^ sha256_S(x, 19) ^ sha256_R(x, 10));}
-function sha256_Sigma0512(x) {return (sha256_S(x, 28) ^ sha256_S(x, 34) ^ sha256_S(x, 39));}
-function sha256_Sigma1512(x) {return (sha256_S(x, 14) ^ sha256_S(x, 18) ^ sha256_S(x, 41));}
-function sha256_Gamma0512(x) {return (sha256_S(x, 1)  ^ sha256_S(x, 8) ^ sha256_R(x, 7));}
-function sha256_Gamma1512(x) {return (sha256_S(x, 19) ^ sha256_S(x, 61) ^ sha256_R(x, 6));}
-
-var sha256_K = new Array
-(
-  1116352408, 1899447441, -1245643825, -373957723, 961987163, 1508970993,
-  -1841331548, -1424204075, -670586216, 310598401, 607225278, 1426881987,
-  1925078388, -2132889090, -1680079193, -1046744716, -459576895, -272742522,
-  264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986,
-  -1740746414, -1473132947, -1341970488, -1084653625, -958395405, -710438585,
-  113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291,
-  1695183700, 1986661051, -2117940946, -1838011259, -1564481375, -1474664885,
-  -1035236496, -949202525, -778901479, -694614492, -200395387, 275423344,
-  430227734, 506948616, 659060556, 883997877, 958139571, 1322822218,
-  1537002063, 1747873779, 1955562222, 2024104815, -2067236844, -1933114872,
-  -1866530822, -1538233109, -1090935817, -965641998
-);
-
-function binb_sha256(m, l)
-{
-  var HASH = new Array(1779033703, -1150833019, 1013904242, -1521486534,
-                       1359893119, -1694144372, 528734635, 1541459225);
-  var W = new Array(64);
-  var a, b, c, d, e, f, g, h;
-  var i, j, T1, T2;
-
-  /* append padding */
-  m[l >> 5] |= 0x80 << (24 - l % 32);
-  m[((l + 64 >> 9) << 4) + 15] = l;
-
-  for(i = 0; i < m.length; i += 16)
-  {
-    a = HASH[0];
-    b = HASH[1];
-    c = HASH[2];
-    d = HASH[3];
-    e = HASH[4];
-    f = HASH[5];
-    g = HASH[6];
-    h = HASH[7];
-
-    for(j = 0; j < 64; j++)
-    {
-      if (j < 16) W[j] = m[j + i];
-      else W[j] = safe_add(safe_add(safe_add(sha256_Gamma1256(W[j - 2]), W[j - 7]),
-                                            sha256_Gamma0256(W[j - 15])), W[j - 16]);
-
-      T1 = safe_add(safe_add(safe_add(safe_add(h, sha256_Sigma1256(e)), sha256_Ch(e, f, g)),
-                                                          sha256_K[j]), W[j]);
-      T2 = safe_add(sha256_Sigma0256(a), sha256_Maj(a, b, c));
-      h = g;
-      g = f;
-      f = e;
-      e = safe_add(d, T1);
-      d = c;
-      c = b;
-      b = a;
-      a = safe_add(T1, T2);
-    }
-
-    HASH[0] = safe_add(a, HASH[0]);
-    HASH[1] = safe_add(b, HASH[1]);
-    HASH[2] = safe_add(c, HASH[2]);
-    HASH[3] = safe_add(d, HASH[3]);
-    HASH[4] = safe_add(e, HASH[4]);
-    HASH[5] = safe_add(f, HASH[5]);
-    HASH[6] = safe_add(g, HASH[6]);
-    HASH[7] = safe_add(h, HASH[7]);
-  }
-  return HASH;
-}
-
-function safe_add (x, y)
-{
-  var lsw = (x & 0xFFFF) + (y & 0xFFFF);
-  var msw = (x >> 16) + (y >> 16) + (lsw >> 16);
-  return (msw << 16) | (lsw & 0xFFFF);
-}
-;
-/*! rsasign-1.2.js (c) 2012 Kenji Urushima | kjur.github.com/jsrsasign/license
- */
-//
-// rsa-sign.js - adding signing functions to RSAKey class.
-//
-//
-// version: 1.2.1 (08 May 2012)
-//
-// Copyright (c) 2010-2012 Kenji Urushima (kenji.urushima@gmail.com)
-//
-// This software is licensed under the terms of the MIT License.
-// http://kjur.github.com/jsrsasign/license/
-//
-// The above copyright and license notice shall be 
-// included in all copies or substantial portions of the Software.
-
-//
-// Depends on:
-//   function sha1.hex(s) of sha1.js
-//   jsbn.js
-//   jsbn2.js
-//   rsa.js
-//   rsa2.js
-//
-
-// keysize / pmstrlen
-//  512 /  128
-// 1024 /  256
-// 2048 /  512
-// 4096 / 1024
-
-/**
- * @property {Dictionary} _RSASIGN_DIHEAD
- * @description Array of head part of hexadecimal DigestInfo value for hash algorithms.
- * You can add any DigestInfo hash algorith for signing.
- * See PKCS#1 v2.1 spec (p38).
- */
-
-var _RSASIGN_DIHEAD = [];
-_RSASIGN_DIHEAD['sha1'] =      "3021300906052b0e03021a05000414";
-_RSASIGN_DIHEAD['sha256'] =    "3031300d060960864801650304020105000420";
-_RSASIGN_DIHEAD['sha384'] =    "3041300d060960864801650304020205000430";
-_RSASIGN_DIHEAD['sha512'] =    "3051300d060960864801650304020305000440";
-_RSASIGN_DIHEAD['md2'] =       "3020300c06082a864886f70d020205000410";
-_RSASIGN_DIHEAD['md5'] =       "3020300c06082a864886f70d020505000410";
-_RSASIGN_DIHEAD['ripemd160'] = "3021300906052b2403020105000414";
-
-/**
- * @property {Dictionary} _RSASIGN_HASHHEXFUNC
- * @description Array of functions which calculate hash and returns it as hexadecimal.
- * You can add any hash algorithm implementations.
- */
-var _RSASIGN_HASHHEXFUNC = [];
-_RSASIGN_HASHHEXFUNC['sha1'] =      function(s){return hex_sha1(s);};  // http://pajhome.org.uk/crypt/md5/md5.html
-_RSASIGN_HASHHEXFUNC['sha256'] =    function(s){return hex_sha256(s);} // http://pajhome.org.uk/crypt/md5/md5.html
-_RSASIGN_HASHHEXFUNC['sha512'] =    function(s){return hex_sha512(s);} // http://pajhome.org.uk/crypt/md5/md5.html
-_RSASIGN_HASHHEXFUNC['md5'] =       function(s){return hex_md5(s);};   // http://pajhome.org.uk/crypt/md5/md5.html
-_RSASIGN_HASHHEXFUNC['ripemd160'] = function(s){return hex_rmd160(s);};   // http://pajhome.org.uk/crypt/md5/md5.html
-
-//_RSASIGN_HASHHEXFUNC['sha1'] =   function(s){return sha1.hex(s);}   // http://user1.matsumoto.ne.jp/~goma/js/hash.html
-//_RSASIGN_HASHHEXFUNC['sha256'] = function(s){return sha256.hex;}    // http://user1.matsumoto.ne.jp/~goma/js/hash.html
-
-var _RE_HEXDECONLY = new RegExp("");
-_RE_HEXDECONLY.compile("[^0-9a-f]", "gi");
-
-// ========================================================================
-// Signature Generation
-// ========================================================================
-
-function _rsasign_getHexPaddedDigestInfoForString(s, keySize, hashAlg) {
-  var pmStrLen = keySize / 4;
-  var hashFunc = _RSASIGN_HASHHEXFUNC[hashAlg];
-  var sHashHex = hashFunc(s);
-
-  var sHead = "0001";
-  var sTail = "00" + _RSASIGN_DIHEAD[hashAlg] + sHashHex;
-  var sMid = "";
-  var fLen = pmStrLen - sHead.length - sTail.length;
-  for (var i = 0; i < fLen; i += 2) {
-    sMid += "ff";
-  }
-  sPaddedMessageHex = sHead + sMid + sTail;
-  return sPaddedMessageHex;
-}
-
-function _zeroPaddingOfSignature(hex, bitLength) {
-  var s = "";
-  var nZero = bitLength / 4 - hex.length;
-  for (var i = 0; i < nZero; i++) {
-    s = s + "0";
-  }
-  return s + hex;
-}
-
-/**
- * sign for a message string with RSA private key.<br/>
- * @name signString
- * @memberOf RSAKey#
- * @function
- * @param {String} s message string to be signed.
- * @param {String} hashAlg hash algorithm name for signing.<br/>
- * @return returns hexadecimal string of signature value.
- */
-function _rsasign_signString(s, hashAlg) {
-  //alert("this.n.bitLength() = " + this.n.bitLength());
-  var hPM = _rsasign_getHexPaddedDigestInfoForString(s, this.n.bitLength(), hashAlg);
-  var biPaddedMessage = parseBigInt(hPM, 16);
-  var biSign = this.doPrivate(biPaddedMessage);
-  var hexSign = biSign.toString(16);
-  return _zeroPaddingOfSignature(hexSign, this.n.bitLength());
-}
-
-function _rsasign_signStringWithSHA1(s) {
-  return _rsasign_signString(s, 'sha1');
-}
-
-function _rsasign_signStringWithSHA256(s) {
-  return _rsasign_signString(s, 'sha256');
-}
-
-// ========================================================================
-// Signature Verification
-// ========================================================================
-
-function _rsasign_getDecryptSignatureBI(biSig, hN, hE) {
-  var rsa = new RSAKey();
-  rsa.setPublic(hN, hE);
-  var biDecryptedSig = rsa.doPublic(biSig);
-  return biDecryptedSig;
-}
-
-function _rsasign_getHexDigestInfoFromSig(biSig, hN, hE) {
-  var biDecryptedSig = _rsasign_getDecryptSignatureBI(biSig, hN, hE);
-  var hDigestInfo = biDecryptedSig.toString(16).replace(/^1f+00/, '');
-  return hDigestInfo;
-}
-
-function _rsasign_getAlgNameAndHashFromHexDisgestInfo(hDigestInfo) {
-  for (var algName in _RSASIGN_DIHEAD) {
-    var head = _RSASIGN_DIHEAD[algName];
-    var len = head.length;
-    if (hDigestInfo.substring(0, len) == head) {
-      var a = [algName, hDigestInfo.substring(len)];
-      return a;
-    }
-  }
-  return [];
-}
-
-function _rsasign_verifySignatureWithArgs(sMsg, biSig, hN, hE) {
-  var hDigestInfo = _rsasign_getHexDigestInfoFromSig(biSig, hN, hE);
-  var digestInfoAry = _rsasign_getAlgNameAndHashFromHexDisgestInfo(hDigestInfo);
-  if (digestInfoAry.length == 0) return false;
-  var algName = digestInfoAry[0];
-  var diHashValue = digestInfoAry[1];
-  var ff = _RSASIGN_HASHHEXFUNC[algName];
-  var msgHashValue = ff(sMsg);
-  return (diHashValue == msgHashValue);
-}
-
-function _rsasign_verifyHexSignatureForMessage(hSig, sMsg) {
-  var biSig = parseBigInt(hSig, 16);
-  var result = _rsasign_verifySignatureWithArgs(sMsg, biSig,
-						this.n.toString(16),
-						this.e.toString(16));
-  return result;
-}
-
-/**
- * verifies a sigature for a message string with RSA public key.<br/>
- * @name verifyString
- * @memberOf RSAKey#
- * @function
- * @param {String} sMsg message string to be verified.
- * @param {String} hSig hexadecimal string of siganture.<br/>
- *                 non-hexadecimal charactors including new lines will be ignored.
- * @return returns 1 if valid, otherwise 0
- */
-function _rsasign_verifyString(sMsg, hSig) {
-  hSig = hSig.replace(_RE_HEXDECONLY, '');
-  if (hSig.length != this.n.bitLength() / 4) return 0;
-  hSig = hSig.replace(/[ \n]+/g, "");
-  var biSig = parseBigInt(hSig, 16);
-  var biDecryptedSig = this.doPublic(biSig);
-  var hDigestInfo = biDecryptedSig.toString(16).replace(/^1f+00/, '');
-  var digestInfoAry = _rsasign_getAlgNameAndHashFromHexDisgestInfo(hDigestInfo);
-  
-  if (digestInfoAry.length == 0) return false;
-  var algName = digestInfoAry[0];
-  var diHashValue = digestInfoAry[1];
-  var ff = _RSASIGN_HASHHEXFUNC[algName];
-  var msgHashValue = ff(sMsg);
-  return (diHashValue == msgHashValue);
-}
-
-RSAKey.prototype.signString = _rsasign_signString;
-RSAKey.prototype.signStringWithSHA1 = _rsasign_signStringWithSHA1;
-RSAKey.prototype.signStringWithSHA256 = _rsasign_signStringWithSHA256;
-RSAKey.prototype.sign = _rsasign_signString;
-RSAKey.prototype.signWithSHA1 = _rsasign_signStringWithSHA1;
-RSAKey.prototype.signWithSHA256 = _rsasign_signStringWithSHA256;
-
-RSAKey.prototype.verifyString = _rsasign_verifyString;
-RSAKey.prototype.verifyHexSignatureForMessage = _rsasign_verifyHexSignatureForMessage;
-RSAKey.prototype.verify = _rsasign_verifyString;
-RSAKey.prototype.verifyHexSignatureForByteArrayMessage = _rsasign_verifyHexSignatureForMessage;
-
-/**
- * @name RSAKey
- * @class
- * @description Tom Wu's RSA Key class and extension
- */
-;
-/*
-CryptoJS v3.0.2
+CryptoJS v3.1.2
 code.google.com/p/crypto-js
-(c) 2009-2012 by Jeff Mott. All rights reserved.
+(c) 2009-2013 by Jeff Mott. All rights reserved.
 code.google.com/p/crypto-js/wiki/License
 */
 
-var CryptoJS=CryptoJS||function(o,q){var l={},m=l.lib={},n=m.Base=function(){function a(){}return{extend:function(e){a.prototype=this;var c=new a;e&&c.mixIn(e);c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.$super.extend(this)}}}(),j=m.WordArray=n.extend({init:function(a,e){a=
-this.words=a||[];this.sigBytes=e!=q?e:4*a.length},toString:function(a){return(a||r).stringify(this)},concat:function(a){var e=this.words,c=a.words,d=this.sigBytes,a=a.sigBytes;this.clamp();if(d%4)for(var b=0;b<a;b++)e[d+b>>>2]|=(c[b>>>2]>>>24-8*(b%4)&255)<<24-8*((d+b)%4);else if(65535<c.length)for(b=0;b<a;b+=4)e[d+b>>>2]=c[b>>>2];else e.push.apply(e,c);this.sigBytes+=a;return this},clamp:function(){var a=this.words,e=this.sigBytes;a[e>>>2]&=4294967295<<32-8*(e%4);a.length=o.ceil(e/4)},clone:function(){var a=
-n.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var e=[],c=0;c<a;c+=4)e.push(4294967296*o.random()|0);return j.create(e,a)}}),k=l.enc={},r=k.Hex={stringify:function(a){for(var e=a.words,a=a.sigBytes,c=[],d=0;d<a;d++){var b=e[d>>>2]>>>24-8*(d%4)&255;c.push((b>>>4).toString(16));c.push((b&15).toString(16))}return c.join("")},parse:function(a){for(var b=a.length,c=[],d=0;d<b;d+=2)c[d>>>3]|=parseInt(a.substr(d,2),16)<<24-4*(d%8);return j.create(c,b/2)}},p=k.Latin1={stringify:function(a){for(var b=
-a.words,a=a.sigBytes,c=[],d=0;d<a;d++)c.push(String.fromCharCode(b[d>>>2]>>>24-8*(d%4)&255));return c.join("")},parse:function(a){for(var b=a.length,c=[],d=0;d<b;d++)c[d>>>2]|=(a.charCodeAt(d)&255)<<24-8*(d%4);return j.create(c,b)}},h=k.Utf8={stringify:function(a){try{return decodeURIComponent(escape(p.stringify(a)))}catch(b){throw Error("Malformed UTF-8 data");}},parse:function(a){return p.parse(unescape(encodeURIComponent(a)))}},b=m.BufferedBlockAlgorithm=n.extend({reset:function(){this._data=j.create();
-this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=h.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var b=this._data,c=b.words,d=b.sigBytes,f=this.blockSize,i=d/(4*f),i=a?o.ceil(i):o.max((i|0)-this._minBufferSize,0),a=i*f,d=o.min(4*a,d);if(a){for(var h=0;h<a;h+=f)this._doProcessBlock(c,h);h=c.splice(0,a);b.sigBytes-=d}return j.create(h,d)},clone:function(){var a=n.clone.call(this);a._data=this._data.clone();return a},_minBufferSize:0});m.Hasher=b.extend({init:function(){this.reset()},
-reset:function(){b.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);this._doFinalize();return this._hash},clone:function(){var a=b.clone.call(this);a._hash=this._hash.clone();return a},blockSize:16,_createHelper:function(a){return function(b,c){return a.create(c).finalize(b)}},_createHmacHelper:function(a){return function(b,c){return f.HMAC.create(a,c).finalize(b)}}});var f=l.algo={};return l}(Math);
-(function(o){function q(b,f,a,e,c,d,g){b=b+(f&a|~f&e)+c+g;return(b<<d|b>>>32-d)+f}function l(b,f,a,e,c,d,g){b=b+(f&e|a&~e)+c+g;return(b<<d|b>>>32-d)+f}function m(b,f,a,e,c,d,g){b=b+(f^a^e)+c+g;return(b<<d|b>>>32-d)+f}function n(b,f,a,e,c,d,g){b=b+(a^(f|~e))+c+g;return(b<<d|b>>>32-d)+f}var j=CryptoJS,k=j.lib,r=k.WordArray,k=k.Hasher,p=j.algo,h=[];(function(){for(var b=0;64>b;b++)h[b]=4294967296*o.abs(o.sin(b+1))|0})();p=p.MD5=k.extend({_doReset:function(){this._hash=r.create([1732584193,4023233417,
-2562383102,271733878])},_doProcessBlock:function(b,f){for(var a=0;16>a;a++){var e=f+a,c=b[e];b[e]=(c<<8|c>>>24)&16711935|(c<<24|c>>>8)&4278255360}for(var e=this._hash.words,c=e[0],d=e[1],g=e[2],i=e[3],a=0;64>a;a+=4)16>a?(c=q(c,d,g,i,b[f+a],7,h[a]),i=q(i,c,d,g,b[f+a+1],12,h[a+1]),g=q(g,i,c,d,b[f+a+2],17,h[a+2]),d=q(d,g,i,c,b[f+a+3],22,h[a+3])):32>a?(c=l(c,d,g,i,b[f+(a+1)%16],5,h[a]),i=l(i,c,d,g,b[f+(a+6)%16],9,h[a+1]),g=l(g,i,c,d,b[f+(a+11)%16],14,h[a+2]),d=l(d,g,i,c,b[f+a%16],20,h[a+3])):48>a?(c=
-m(c,d,g,i,b[f+(3*a+5)%16],4,h[a]),i=m(i,c,d,g,b[f+(3*a+8)%16],11,h[a+1]),g=m(g,i,c,d,b[f+(3*a+11)%16],16,h[a+2]),d=m(d,g,i,c,b[f+(3*a+14)%16],23,h[a+3])):(c=n(c,d,g,i,b[f+3*a%16],6,h[a]),i=n(i,c,d,g,b[f+(3*a+7)%16],10,h[a+1]),g=n(g,i,c,d,b[f+(3*a+14)%16],15,h[a+2]),d=n(d,g,i,c,b[f+(3*a+5)%16],21,h[a+3]));e[0]=e[0]+c|0;e[1]=e[1]+d|0;e[2]=e[2]+g|0;e[3]=e[3]+i|0},_doFinalize:function(){var b=this._data,f=b.words,a=8*this._nDataBytes,e=8*b.sigBytes;f[e>>>5]|=128<<24-e%32;f[(e+64>>>9<<4)+14]=(a<<8|a>>>
-24)&16711935|(a<<24|a>>>8)&4278255360;b.sigBytes=4*(f.length+1);this._process();b=this._hash.words;for(f=0;4>f;f++)a=b[f],b[f]=(a<<8|a>>>24)&16711935|(a<<24|a>>>8)&4278255360}});j.MD5=k._createHelper(p);j.HmacMD5=k._createHmacHelper(p)})(Math);
+var CryptoJS=CryptoJS||function(s,p){var m={},l=m.lib={},n=function(){},r=l.Base={extend:function(b){n.prototype=this;var h=new n;b&&h.mixIn(b);h.hasOwnProperty("init")||(h.init=function(){h.$super.init.apply(this,arguments)});h.init.prototype=h;h.$super=this;return h},create:function(){var b=this.extend();b.init.apply(b,arguments);return b},init:function(){},mixIn:function(b){for(var h in b)b.hasOwnProperty(h)&&(this[h]=b[h]);b.hasOwnProperty("toString")&&(this.toString=b.toString)},clone:function(){return this.init.prototype.extend(this)}},
+q=l.WordArray=r.extend({init:function(b,h){b=this.words=b||[];this.sigBytes=h!=p?h:4*b.length},toString:function(b){return(b||t).stringify(this)},concat:function(b){var h=this.words,a=b.words,j=this.sigBytes;b=b.sigBytes;this.clamp();if(j%4)for(var g=0;g<b;g++)h[j+g>>>2]|=(a[g>>>2]>>>24-8*(g%4)&255)<<24-8*((j+g)%4);else if(65535<a.length)for(g=0;g<b;g+=4)h[j+g>>>2]=a[g>>>2];else h.push.apply(h,a);this.sigBytes+=b;return this},clamp:function(){var b=this.words,h=this.sigBytes;b[h>>>2]&=4294967295<<
+32-8*(h%4);b.length=s.ceil(h/4)},clone:function(){var b=r.clone.call(this);b.words=this.words.slice(0);return b},random:function(b){for(var h=[],a=0;a<b;a+=4)h.push(4294967296*s.random()|0);return new q.init(h,b)}}),v=m.enc={},t=v.Hex={stringify:function(b){var a=b.words;b=b.sigBytes;for(var g=[],j=0;j<b;j++){var k=a[j>>>2]>>>24-8*(j%4)&255;g.push((k>>>4).toString(16));g.push((k&15).toString(16))}return g.join("")},parse:function(b){for(var a=b.length,g=[],j=0;j<a;j+=2)g[j>>>3]|=parseInt(b.substr(j,
+2),16)<<24-4*(j%8);return new q.init(g,a/2)}},a=v.Latin1={stringify:function(b){var a=b.words;b=b.sigBytes;for(var g=[],j=0;j<b;j++)g.push(String.fromCharCode(a[j>>>2]>>>24-8*(j%4)&255));return g.join("")},parse:function(b){for(var a=b.length,g=[],j=0;j<a;j++)g[j>>>2]|=(b.charCodeAt(j)&255)<<24-8*(j%4);return new q.init(g,a)}},u=v.Utf8={stringify:function(b){try{return decodeURIComponent(escape(a.stringify(b)))}catch(g){throw Error("Malformed UTF-8 data");}},parse:function(b){return a.parse(unescape(encodeURIComponent(b)))}},
+g=l.BufferedBlockAlgorithm=r.extend({reset:function(){this._data=new q.init;this._nDataBytes=0},_append:function(b){"string"==typeof b&&(b=u.parse(b));this._data.concat(b);this._nDataBytes+=b.sigBytes},_process:function(b){var a=this._data,g=a.words,j=a.sigBytes,k=this.blockSize,m=j/(4*k),m=b?s.ceil(m):s.max((m|0)-this._minBufferSize,0);b=m*k;j=s.min(4*b,j);if(b){for(var l=0;l<b;l+=k)this._doProcessBlock(g,l);l=g.splice(0,b);a.sigBytes-=j}return new q.init(l,j)},clone:function(){var b=r.clone.call(this);
+b._data=this._data.clone();return b},_minBufferSize:0});l.Hasher=g.extend({cfg:r.extend(),init:function(b){this.cfg=this.cfg.extend(b);this.reset()},reset:function(){g.reset.call(this);this._doReset()},update:function(b){this._append(b);this._process();return this},finalize:function(b){b&&this._append(b);return this._doFinalize()},blockSize:16,_createHelper:function(b){return function(a,g){return(new b.init(g)).finalize(a)}},_createHmacHelper:function(b){return function(a,g){return(new k.HMAC.init(b,
+g)).finalize(a)}}});var k=m.algo={};return m}(Math);
+(function(s){function p(a,k,b,h,l,j,m){a=a+(k&b|~k&h)+l+m;return(a<<j|a>>>32-j)+k}function m(a,k,b,h,l,j,m){a=a+(k&h|b&~h)+l+m;return(a<<j|a>>>32-j)+k}function l(a,k,b,h,l,j,m){a=a+(k^b^h)+l+m;return(a<<j|a>>>32-j)+k}function n(a,k,b,h,l,j,m){a=a+(b^(k|~h))+l+m;return(a<<j|a>>>32-j)+k}for(var r=CryptoJS,q=r.lib,v=q.WordArray,t=q.Hasher,q=r.algo,a=[],u=0;64>u;u++)a[u]=4294967296*s.abs(s.sin(u+1))|0;q=q.MD5=t.extend({_doReset:function(){this._hash=new v.init([1732584193,4023233417,2562383102,271733878])},
+_doProcessBlock:function(g,k){for(var b=0;16>b;b++){var h=k+b,w=g[h];g[h]=(w<<8|w>>>24)&16711935|(w<<24|w>>>8)&4278255360}var b=this._hash.words,h=g[k+0],w=g[k+1],j=g[k+2],q=g[k+3],r=g[k+4],s=g[k+5],t=g[k+6],u=g[k+7],v=g[k+8],x=g[k+9],y=g[k+10],z=g[k+11],A=g[k+12],B=g[k+13],C=g[k+14],D=g[k+15],c=b[0],d=b[1],e=b[2],f=b[3],c=p(c,d,e,f,h,7,a[0]),f=p(f,c,d,e,w,12,a[1]),e=p(e,f,c,d,j,17,a[2]),d=p(d,e,f,c,q,22,a[3]),c=p(c,d,e,f,r,7,a[4]),f=p(f,c,d,e,s,12,a[5]),e=p(e,f,c,d,t,17,a[6]),d=p(d,e,f,c,u,22,a[7]),
+c=p(c,d,e,f,v,7,a[8]),f=p(f,c,d,e,x,12,a[9]),e=p(e,f,c,d,y,17,a[10]),d=p(d,e,f,c,z,22,a[11]),c=p(c,d,e,f,A,7,a[12]),f=p(f,c,d,e,B,12,a[13]),e=p(e,f,c,d,C,17,a[14]),d=p(d,e,f,c,D,22,a[15]),c=m(c,d,e,f,w,5,a[16]),f=m(f,c,d,e,t,9,a[17]),e=m(e,f,c,d,z,14,a[18]),d=m(d,e,f,c,h,20,a[19]),c=m(c,d,e,f,s,5,a[20]),f=m(f,c,d,e,y,9,a[21]),e=m(e,f,c,d,D,14,a[22]),d=m(d,e,f,c,r,20,a[23]),c=m(c,d,e,f,x,5,a[24]),f=m(f,c,d,e,C,9,a[25]),e=m(e,f,c,d,q,14,a[26]),d=m(d,e,f,c,v,20,a[27]),c=m(c,d,e,f,B,5,a[28]),f=m(f,c,
+d,e,j,9,a[29]),e=m(e,f,c,d,u,14,a[30]),d=m(d,e,f,c,A,20,a[31]),c=l(c,d,e,f,s,4,a[32]),f=l(f,c,d,e,v,11,a[33]),e=l(e,f,c,d,z,16,a[34]),d=l(d,e,f,c,C,23,a[35]),c=l(c,d,e,f,w,4,a[36]),f=l(f,c,d,e,r,11,a[37]),e=l(e,f,c,d,u,16,a[38]),d=l(d,e,f,c,y,23,a[39]),c=l(c,d,e,f,B,4,a[40]),f=l(f,c,d,e,h,11,a[41]),e=l(e,f,c,d,q,16,a[42]),d=l(d,e,f,c,t,23,a[43]),c=l(c,d,e,f,x,4,a[44]),f=l(f,c,d,e,A,11,a[45]),e=l(e,f,c,d,D,16,a[46]),d=l(d,e,f,c,j,23,a[47]),c=n(c,d,e,f,h,6,a[48]),f=n(f,c,d,e,u,10,a[49]),e=n(e,f,c,d,
+C,15,a[50]),d=n(d,e,f,c,s,21,a[51]),c=n(c,d,e,f,A,6,a[52]),f=n(f,c,d,e,q,10,a[53]),e=n(e,f,c,d,y,15,a[54]),d=n(d,e,f,c,w,21,a[55]),c=n(c,d,e,f,v,6,a[56]),f=n(f,c,d,e,D,10,a[57]),e=n(e,f,c,d,t,15,a[58]),d=n(d,e,f,c,B,21,a[59]),c=n(c,d,e,f,r,6,a[60]),f=n(f,c,d,e,z,10,a[61]),e=n(e,f,c,d,j,15,a[62]),d=n(d,e,f,c,x,21,a[63]);b[0]=b[0]+c|0;b[1]=b[1]+d|0;b[2]=b[2]+e|0;b[3]=b[3]+f|0},_doFinalize:function(){var a=this._data,k=a.words,b=8*this._nDataBytes,h=8*a.sigBytes;k[h>>>5]|=128<<24-h%32;var l=s.floor(b/
+4294967296);k[(h+64>>>9<<4)+15]=(l<<8|l>>>24)&16711935|(l<<24|l>>>8)&4278255360;k[(h+64>>>9<<4)+14]=(b<<8|b>>>24)&16711935|(b<<24|b>>>8)&4278255360;a.sigBytes=4*(k.length+1);this._process();a=this._hash;k=a.words;for(b=0;4>b;b++)h=k[b],k[b]=(h<<8|h>>>24)&16711935|(h<<24|h>>>8)&4278255360;return a},clone:function(){var a=t.clone.call(this);a._hash=this._hash.clone();return a}});r.MD5=t._createHelper(q);r.HmacMD5=t._createHmacHelper(q)})(Math);
 /*
-CryptoJS v3.0.2
+CryptoJS v3.1.2
 code.google.com/p/crypto-js
-(c) 2009-2012 by Jeff Mott. All rights reserved.
+(c) 2009-2013 by Jeff Mott. All rights reserved.
 code.google.com/p/crypto-js/wiki/License
 */
 
-var CryptoJS=CryptoJS||function(p,h){var i={},l=i.lib={},r=l.Base=function(){function a(){}return{extend:function(e){a.prototype=this;var c=new a;e&&c.mixIn(e);c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.$super.extend(this)}}}(),o=l.WordArray=r.extend({init:function(a,e){a=
-this.words=a||[];this.sigBytes=e!=h?e:4*a.length},toString:function(a){return(a||s).stringify(this)},concat:function(a){var e=this.words,c=a.words,b=this.sigBytes,a=a.sigBytes;this.clamp();if(b%4)for(var d=0;d<a;d++)e[b+d>>>2]|=(c[d>>>2]>>>24-8*(d%4)&255)<<24-8*((b+d)%4);else if(65535<c.length)for(d=0;d<a;d+=4)e[b+d>>>2]=c[d>>>2];else e.push.apply(e,c);this.sigBytes+=a;return this},clamp:function(){var a=this.words,e=this.sigBytes;a[e>>>2]&=4294967295<<32-8*(e%4);a.length=p.ceil(e/4)},clone:function(){var a=
-r.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var e=[],c=0;c<a;c+=4)e.push(4294967296*p.random()|0);return o.create(e,a)}}),m=i.enc={},s=m.Hex={stringify:function(a){for(var e=a.words,a=a.sigBytes,c=[],b=0;b<a;b++){var d=e[b>>>2]>>>24-8*(b%4)&255;c.push((d>>>4).toString(16));c.push((d&15).toString(16))}return c.join("")},parse:function(a){for(var e=a.length,c=[],b=0;b<e;b+=2)c[b>>>3]|=parseInt(a.substr(b,2),16)<<24-4*(b%8);return o.create(c,e/2)}},n=m.Latin1={stringify:function(a){for(var e=
-a.words,a=a.sigBytes,c=[],b=0;b<a;b++)c.push(String.fromCharCode(e[b>>>2]>>>24-8*(b%4)&255));return c.join("")},parse:function(a){for(var e=a.length,c=[],b=0;b<e;b++)c[b>>>2]|=(a.charCodeAt(b)&255)<<24-8*(b%4);return o.create(c,e)}},k=m.Utf8={stringify:function(a){try{return decodeURIComponent(escape(n.stringify(a)))}catch(e){throw Error("Malformed UTF-8 data");}},parse:function(a){return n.parse(unescape(encodeURIComponent(a)))}},f=l.BufferedBlockAlgorithm=r.extend({reset:function(){this._data=o.create();
-this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=k.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var e=this._data,c=e.words,b=e.sigBytes,d=this.blockSize,q=b/(4*d),q=a?p.ceil(q):p.max((q|0)-this._minBufferSize,0),a=q*d,b=p.min(4*a,b);if(a){for(var j=0;j<a;j+=d)this._doProcessBlock(c,j);j=c.splice(0,a);e.sigBytes-=b}return o.create(j,b)},clone:function(){var a=r.clone.call(this);a._data=this._data.clone();return a},_minBufferSize:0});l.Hasher=f.extend({init:function(){this.reset()},
-reset:function(){f.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);this._doFinalize();return this._hash},clone:function(){var a=f.clone.call(this);a._hash=this._hash.clone();return a},blockSize:16,_createHelper:function(a){return function(e,c){return a.create(c).finalize(e)}},_createHmacHelper:function(a){return function(e,c){return g.HMAC.create(a,c).finalize(e)}}});var g=i.algo={};return i}(Math);
-(function(){var p=CryptoJS,h=p.lib.WordArray;p.enc.Base64={stringify:function(i){var l=i.words,h=i.sigBytes,o=this._map;i.clamp();for(var i=[],m=0;m<h;m+=3)for(var s=(l[m>>>2]>>>24-8*(m%4)&255)<<16|(l[m+1>>>2]>>>24-8*((m+1)%4)&255)<<8|l[m+2>>>2]>>>24-8*((m+2)%4)&255,n=0;4>n&&m+0.75*n<h;n++)i.push(o.charAt(s>>>6*(3-n)&63));if(l=o.charAt(64))for(;i.length%4;)i.push(l);return i.join("")},parse:function(i){var i=i.replace(/\s/g,""),l=i.length,r=this._map,o=r.charAt(64);o&&(o=i.indexOf(o),-1!=o&&(l=o));
-for(var o=[],m=0,s=0;s<l;s++)if(s%4){var n=r.indexOf(i.charAt(s-1))<<2*(s%4),k=r.indexOf(i.charAt(s))>>>6-2*(s%4);o[m>>>2]|=(n|k)<<24-8*(m%4);m++}return h.create(o,m)},_map:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="}})();
-(function(p){function h(f,g,a,e,c,b,d){f=f+(g&a|~g&e)+c+d;return(f<<b|f>>>32-b)+g}function i(f,g,a,e,c,b,d){f=f+(g&e|a&~e)+c+d;return(f<<b|f>>>32-b)+g}function l(f,g,a,e,c,b,d){f=f+(g^a^e)+c+d;return(f<<b|f>>>32-b)+g}function r(f,g,a,e,c,b,d){f=f+(a^(g|~e))+c+d;return(f<<b|f>>>32-b)+g}var o=CryptoJS,m=o.lib,s=m.WordArray,m=m.Hasher,n=o.algo,k=[];(function(){for(var f=0;64>f;f++)k[f]=4294967296*p.abs(p.sin(f+1))|0})();n=n.MD5=m.extend({_doReset:function(){this._hash=s.create([1732584193,4023233417,
-2562383102,271733878])},_doProcessBlock:function(f,g){for(var a=0;16>a;a++){var e=g+a,c=f[e];f[e]=(c<<8|c>>>24)&16711935|(c<<24|c>>>8)&4278255360}for(var e=this._hash.words,c=e[0],b=e[1],d=e[2],q=e[3],a=0;64>a;a+=4)16>a?(c=h(c,b,d,q,f[g+a],7,k[a]),q=h(q,c,b,d,f[g+a+1],12,k[a+1]),d=h(d,q,c,b,f[g+a+2],17,k[a+2]),b=h(b,d,q,c,f[g+a+3],22,k[a+3])):32>a?(c=i(c,b,d,q,f[g+(a+1)%16],5,k[a]),q=i(q,c,b,d,f[g+(a+6)%16],9,k[a+1]),d=i(d,q,c,b,f[g+(a+11)%16],14,k[a+2]),b=i(b,d,q,c,f[g+a%16],20,k[a+3])):48>a?(c=
-l(c,b,d,q,f[g+(3*a+5)%16],4,k[a]),q=l(q,c,b,d,f[g+(3*a+8)%16],11,k[a+1]),d=l(d,q,c,b,f[g+(3*a+11)%16],16,k[a+2]),b=l(b,d,q,c,f[g+(3*a+14)%16],23,k[a+3])):(c=r(c,b,d,q,f[g+3*a%16],6,k[a]),q=r(q,c,b,d,f[g+(3*a+7)%16],10,k[a+1]),d=r(d,q,c,b,f[g+(3*a+14)%16],15,k[a+2]),b=r(b,d,q,c,f[g+(3*a+5)%16],21,k[a+3]));e[0]=e[0]+c|0;e[1]=e[1]+b|0;e[2]=e[2]+d|0;e[3]=e[3]+q|0},_doFinalize:function(){var f=this._data,g=f.words,a=8*this._nDataBytes,e=8*f.sigBytes;g[e>>>5]|=128<<24-e%32;g[(e+64>>>9<<4)+14]=(a<<8|a>>>
-24)&16711935|(a<<24|a>>>8)&4278255360;f.sigBytes=4*(g.length+1);this._process();f=this._hash.words;for(g=0;4>g;g++)a=f[g],f[g]=(a<<8|a>>>24)&16711935|(a<<24|a>>>8)&4278255360}});o.MD5=m._createHelper(n);o.HmacMD5=m._createHmacHelper(n)})(Math);
-(function(){var p=CryptoJS,h=p.lib,i=h.Base,l=h.WordArray,h=p.algo,r=h.EvpKDF=i.extend({cfg:i.extend({keySize:4,hasher:h.MD5,iterations:1}),init:function(i){this.cfg=this.cfg.extend(i)},compute:function(i,m){for(var h=this.cfg,n=h.hasher.create(),k=l.create(),f=k.words,g=h.keySize,h=h.iterations;f.length<g;){a&&n.update(a);var a=n.update(i).finalize(m);n.reset();for(var e=1;e<h;e++)a=n.finalize(a),n.reset();k.concat(a)}k.sigBytes=4*g;return k}});p.EvpKDF=function(i,l,h){return r.create(h).compute(i,
+var CryptoJS=CryptoJS||function(u,p){var d={},l=d.lib={},s=function(){},t=l.Base={extend:function(a){s.prototype=this;var c=new s;a&&c.mixIn(a);c.hasOwnProperty("init")||(c.init=function(){c.$super.init.apply(this,arguments)});c.init.prototype=c;c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.init.prototype.extend(this)}},
+r=l.WordArray=t.extend({init:function(a,c){a=this.words=a||[];this.sigBytes=c!=p?c:4*a.length},toString:function(a){return(a||v).stringify(this)},concat:function(a){var c=this.words,e=a.words,j=this.sigBytes;a=a.sigBytes;this.clamp();if(j%4)for(var k=0;k<a;k++)c[j+k>>>2]|=(e[k>>>2]>>>24-8*(k%4)&255)<<24-8*((j+k)%4);else if(65535<e.length)for(k=0;k<a;k+=4)c[j+k>>>2]=e[k>>>2];else c.push.apply(c,e);this.sigBytes+=a;return this},clamp:function(){var a=this.words,c=this.sigBytes;a[c>>>2]&=4294967295<<
+32-8*(c%4);a.length=u.ceil(c/4)},clone:function(){var a=t.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var c=[],e=0;e<a;e+=4)c.push(4294967296*u.random()|0);return new r.init(c,a)}}),w=d.enc={},v=w.Hex={stringify:function(a){var c=a.words;a=a.sigBytes;for(var e=[],j=0;j<a;j++){var k=c[j>>>2]>>>24-8*(j%4)&255;e.push((k>>>4).toString(16));e.push((k&15).toString(16))}return e.join("")},parse:function(a){for(var c=a.length,e=[],j=0;j<c;j+=2)e[j>>>3]|=parseInt(a.substr(j,
+2),16)<<24-4*(j%8);return new r.init(e,c/2)}},b=w.Latin1={stringify:function(a){var c=a.words;a=a.sigBytes;for(var e=[],j=0;j<a;j++)e.push(String.fromCharCode(c[j>>>2]>>>24-8*(j%4)&255));return e.join("")},parse:function(a){for(var c=a.length,e=[],j=0;j<c;j++)e[j>>>2]|=(a.charCodeAt(j)&255)<<24-8*(j%4);return new r.init(e,c)}},x=w.Utf8={stringify:function(a){try{return decodeURIComponent(escape(b.stringify(a)))}catch(c){throw Error("Malformed UTF-8 data");}},parse:function(a){return b.parse(unescape(encodeURIComponent(a)))}},
+q=l.BufferedBlockAlgorithm=t.extend({reset:function(){this._data=new r.init;this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=x.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var c=this._data,e=c.words,j=c.sigBytes,k=this.blockSize,b=j/(4*k),b=a?u.ceil(b):u.max((b|0)-this._minBufferSize,0);a=b*k;j=u.min(4*a,j);if(a){for(var q=0;q<a;q+=k)this._doProcessBlock(e,q);q=e.splice(0,a);c.sigBytes-=j}return new r.init(q,j)},clone:function(){var a=t.clone.call(this);
+a._data=this._data.clone();return a},_minBufferSize:0});l.Hasher=q.extend({cfg:t.extend(),init:function(a){this.cfg=this.cfg.extend(a);this.reset()},reset:function(){q.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);return this._doFinalize()},blockSize:16,_createHelper:function(a){return function(b,e){return(new a.init(e)).finalize(b)}},_createHmacHelper:function(a){return function(b,e){return(new n.HMAC.init(a,
+e)).finalize(b)}}});var n=d.algo={};return d}(Math);
+(function(){var u=CryptoJS,p=u.lib.WordArray;u.enc.Base64={stringify:function(d){var l=d.words,p=d.sigBytes,t=this._map;d.clamp();d=[];for(var r=0;r<p;r+=3)for(var w=(l[r>>>2]>>>24-8*(r%4)&255)<<16|(l[r+1>>>2]>>>24-8*((r+1)%4)&255)<<8|l[r+2>>>2]>>>24-8*((r+2)%4)&255,v=0;4>v&&r+0.75*v<p;v++)d.push(t.charAt(w>>>6*(3-v)&63));if(l=t.charAt(64))for(;d.length%4;)d.push(l);return d.join("")},parse:function(d){var l=d.length,s=this._map,t=s.charAt(64);t&&(t=d.indexOf(t),-1!=t&&(l=t));for(var t=[],r=0,w=0;w<
+l;w++)if(w%4){var v=s.indexOf(d.charAt(w-1))<<2*(w%4),b=s.indexOf(d.charAt(w))>>>6-2*(w%4);t[r>>>2]|=(v|b)<<24-8*(r%4);r++}return p.create(t,r)},_map:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="}})();
+(function(u){function p(b,n,a,c,e,j,k){b=b+(n&a|~n&c)+e+k;return(b<<j|b>>>32-j)+n}function d(b,n,a,c,e,j,k){b=b+(n&c|a&~c)+e+k;return(b<<j|b>>>32-j)+n}function l(b,n,a,c,e,j,k){b=b+(n^a^c)+e+k;return(b<<j|b>>>32-j)+n}function s(b,n,a,c,e,j,k){b=b+(a^(n|~c))+e+k;return(b<<j|b>>>32-j)+n}for(var t=CryptoJS,r=t.lib,w=r.WordArray,v=r.Hasher,r=t.algo,b=[],x=0;64>x;x++)b[x]=4294967296*u.abs(u.sin(x+1))|0;r=r.MD5=v.extend({_doReset:function(){this._hash=new w.init([1732584193,4023233417,2562383102,271733878])},
+_doProcessBlock:function(q,n){for(var a=0;16>a;a++){var c=n+a,e=q[c];q[c]=(e<<8|e>>>24)&16711935|(e<<24|e>>>8)&4278255360}var a=this._hash.words,c=q[n+0],e=q[n+1],j=q[n+2],k=q[n+3],z=q[n+4],r=q[n+5],t=q[n+6],w=q[n+7],v=q[n+8],A=q[n+9],B=q[n+10],C=q[n+11],u=q[n+12],D=q[n+13],E=q[n+14],x=q[n+15],f=a[0],m=a[1],g=a[2],h=a[3],f=p(f,m,g,h,c,7,b[0]),h=p(h,f,m,g,e,12,b[1]),g=p(g,h,f,m,j,17,b[2]),m=p(m,g,h,f,k,22,b[3]),f=p(f,m,g,h,z,7,b[4]),h=p(h,f,m,g,r,12,b[5]),g=p(g,h,f,m,t,17,b[6]),m=p(m,g,h,f,w,22,b[7]),
+f=p(f,m,g,h,v,7,b[8]),h=p(h,f,m,g,A,12,b[9]),g=p(g,h,f,m,B,17,b[10]),m=p(m,g,h,f,C,22,b[11]),f=p(f,m,g,h,u,7,b[12]),h=p(h,f,m,g,D,12,b[13]),g=p(g,h,f,m,E,17,b[14]),m=p(m,g,h,f,x,22,b[15]),f=d(f,m,g,h,e,5,b[16]),h=d(h,f,m,g,t,9,b[17]),g=d(g,h,f,m,C,14,b[18]),m=d(m,g,h,f,c,20,b[19]),f=d(f,m,g,h,r,5,b[20]),h=d(h,f,m,g,B,9,b[21]),g=d(g,h,f,m,x,14,b[22]),m=d(m,g,h,f,z,20,b[23]),f=d(f,m,g,h,A,5,b[24]),h=d(h,f,m,g,E,9,b[25]),g=d(g,h,f,m,k,14,b[26]),m=d(m,g,h,f,v,20,b[27]),f=d(f,m,g,h,D,5,b[28]),h=d(h,f,
+m,g,j,9,b[29]),g=d(g,h,f,m,w,14,b[30]),m=d(m,g,h,f,u,20,b[31]),f=l(f,m,g,h,r,4,b[32]),h=l(h,f,m,g,v,11,b[33]),g=l(g,h,f,m,C,16,b[34]),m=l(m,g,h,f,E,23,b[35]),f=l(f,m,g,h,e,4,b[36]),h=l(h,f,m,g,z,11,b[37]),g=l(g,h,f,m,w,16,b[38]),m=l(m,g,h,f,B,23,b[39]),f=l(f,m,g,h,D,4,b[40]),h=l(h,f,m,g,c,11,b[41]),g=l(g,h,f,m,k,16,b[42]),m=l(m,g,h,f,t,23,b[43]),f=l(f,m,g,h,A,4,b[44]),h=l(h,f,m,g,u,11,b[45]),g=l(g,h,f,m,x,16,b[46]),m=l(m,g,h,f,j,23,b[47]),f=s(f,m,g,h,c,6,b[48]),h=s(h,f,m,g,w,10,b[49]),g=s(g,h,f,m,
+E,15,b[50]),m=s(m,g,h,f,r,21,b[51]),f=s(f,m,g,h,u,6,b[52]),h=s(h,f,m,g,k,10,b[53]),g=s(g,h,f,m,B,15,b[54]),m=s(m,g,h,f,e,21,b[55]),f=s(f,m,g,h,v,6,b[56]),h=s(h,f,m,g,x,10,b[57]),g=s(g,h,f,m,t,15,b[58]),m=s(m,g,h,f,D,21,b[59]),f=s(f,m,g,h,z,6,b[60]),h=s(h,f,m,g,C,10,b[61]),g=s(g,h,f,m,j,15,b[62]),m=s(m,g,h,f,A,21,b[63]);a[0]=a[0]+f|0;a[1]=a[1]+m|0;a[2]=a[2]+g|0;a[3]=a[3]+h|0},_doFinalize:function(){var b=this._data,n=b.words,a=8*this._nDataBytes,c=8*b.sigBytes;n[c>>>5]|=128<<24-c%32;var e=u.floor(a/
+4294967296);n[(c+64>>>9<<4)+15]=(e<<8|e>>>24)&16711935|(e<<24|e>>>8)&4278255360;n[(c+64>>>9<<4)+14]=(a<<8|a>>>24)&16711935|(a<<24|a>>>8)&4278255360;b.sigBytes=4*(n.length+1);this._process();b=this._hash;n=b.words;for(a=0;4>a;a++)c=n[a],n[a]=(c<<8|c>>>24)&16711935|(c<<24|c>>>8)&4278255360;return b},clone:function(){var b=v.clone.call(this);b._hash=this._hash.clone();return b}});t.MD5=v._createHelper(r);t.HmacMD5=v._createHmacHelper(r)})(Math);
+(function(){var u=CryptoJS,p=u.lib,d=p.Base,l=p.WordArray,p=u.algo,s=p.EvpKDF=d.extend({cfg:d.extend({keySize:4,hasher:p.MD5,iterations:1}),init:function(d){this.cfg=this.cfg.extend(d)},compute:function(d,r){for(var p=this.cfg,s=p.hasher.create(),b=l.create(),u=b.words,q=p.keySize,p=p.iterations;u.length<q;){n&&s.update(n);var n=s.update(d).finalize(r);s.reset();for(var a=1;a<p;a++)n=s.finalize(n),s.reset();b.concat(n)}b.sigBytes=4*q;return b}});u.EvpKDF=function(d,l,p){return s.create(p).compute(d,
 l)}})();
-CryptoJS.lib.Cipher||function(p){var h=CryptoJS,i=h.lib,l=i.Base,r=i.WordArray,o=i.BufferedBlockAlgorithm,m=h.enc.Base64,s=h.algo.EvpKDF,n=i.Cipher=o.extend({cfg:l.extend(),createEncryptor:function(b,d){return this.create(this._ENC_XFORM_MODE,b,d)},createDecryptor:function(b,d){return this.create(this._DEC_XFORM_MODE,b,d)},init:function(b,d,a){this.cfg=this.cfg.extend(a);this._xformMode=b;this._key=d;this.reset()},reset:function(){o.reset.call(this);this._doReset()},process:function(b){this._append(b);return this._process()},
-finalize:function(b){b&&this._append(b);return this._doFinalize()},keySize:4,ivSize:4,_ENC_XFORM_MODE:1,_DEC_XFORM_MODE:2,_createHelper:function(){return function(b){return{encrypt:function(a,q,j){return("string"==typeof q?c:e).encrypt(b,a,q,j)},decrypt:function(a,q,j){return("string"==typeof q?c:e).decrypt(b,a,q,j)}}}}()});i.StreamCipher=n.extend({_doFinalize:function(){return this._process(!0)},blockSize:1});var k=h.mode={},f=i.BlockCipherMode=l.extend({createEncryptor:function(b,a){return this.Encryptor.create(b,
-a)},createDecryptor:function(b,a){return this.Decryptor.create(b,a)},init:function(b,a){this._cipher=b;this._iv=a}}),k=k.CBC=function(){function b(b,a,d){var c=this._iv;c?this._iv=p:c=this._prevBlock;for(var e=0;e<d;e++)b[a+e]^=c[e]}var a=f.extend();a.Encryptor=a.extend({processBlock:function(a,d){var c=this._cipher,e=c.blockSize;b.call(this,a,d,e);c.encryptBlock(a,d);this._prevBlock=a.slice(d,d+e)}});a.Decryptor=a.extend({processBlock:function(a,d){var c=this._cipher,e=c.blockSize,f=a.slice(d,d+
-e);c.decryptBlock(a,d);b.call(this,a,d,e);this._prevBlock=f}});return a}(),g=(h.pad={}).Pkcs7={pad:function(b,a){for(var c=4*a,c=c-b.sigBytes%c,e=c<<24|c<<16|c<<8|c,f=[],g=0;g<c;g+=4)f.push(e);c=r.create(f,c);b.concat(c)},unpad:function(b){b.sigBytes-=b.words[b.sigBytes-1>>>2]&255}};i.BlockCipher=n.extend({cfg:n.cfg.extend({mode:k,padding:g}),reset:function(){n.reset.call(this);var b=this.cfg,a=b.iv,b=b.mode;if(this._xformMode==this._ENC_XFORM_MODE)var c=b.createEncryptor;else c=b.createDecryptor,
-this._minBufferSize=1;this._mode=c.call(b,this,a&&a.words)},_doProcessBlock:function(b,a){this._mode.processBlock(b,a)},_doFinalize:function(){var b=this.cfg.padding;if(this._xformMode==this._ENC_XFORM_MODE){b.pad(this._data,this.blockSize);var a=this._process(!0)}else a=this._process(!0),b.unpad(a);return a},blockSize:4});var a=i.CipherParams=l.extend({init:function(a){this.mixIn(a)},toString:function(a){return(a||this.formatter).stringify(this)}}),k=(h.format={}).OpenSSL={stringify:function(a){var d=
-a.ciphertext,a=a.salt,d=(a?r.create([1398893684,1701076831]).concat(a).concat(d):d).toString(m);return d=d.replace(/(.{64})/g,"$1\n")},parse:function(b){var b=m.parse(b),d=b.words;if(1398893684==d[0]&&1701076831==d[1]){var c=r.create(d.slice(2,4));d.splice(0,4);b.sigBytes-=16}return a.create({ciphertext:b,salt:c})}},e=i.SerializableCipher=l.extend({cfg:l.extend({format:k}),encrypt:function(b,d,c,e){var e=this.cfg.extend(e),f=b.createEncryptor(c,e),d=f.finalize(d),f=f.cfg;return a.create({ciphertext:d,
-key:c,iv:f.iv,algorithm:b,mode:f.mode,padding:f.padding,blockSize:b.blockSize,formatter:e.format})},decrypt:function(a,c,e,f){f=this.cfg.extend(f);c=this._parse(c,f.format);return a.createDecryptor(e,f).finalize(c.ciphertext)},_parse:function(a,c){return"string"==typeof a?c.parse(a):a}}),h=(h.kdf={}).OpenSSL={compute:function(b,c,e,f){f||(f=r.random(8));b=s.create({keySize:c+e}).compute(b,f);e=r.create(b.words.slice(c),4*e);b.sigBytes=4*c;return a.create({key:b,iv:e,salt:f})}},c=i.PasswordBasedCipher=
-e.extend({cfg:e.cfg.extend({kdf:h}),encrypt:function(a,c,f,j){j=this.cfg.extend(j);f=j.kdf.compute(f,a.keySize,a.ivSize);j.iv=f.iv;a=e.encrypt.call(this,a,c,f.key,j);a.mixIn(f);return a},decrypt:function(a,c,f,j){j=this.cfg.extend(j);c=this._parse(c,j.format);f=j.kdf.compute(f,a.keySize,a.ivSize,c.salt);j.iv=f.iv;return e.decrypt.call(this,a,c,f.key,j)}})}();
-(function(){var p=CryptoJS,h=p.lib.BlockCipher,i=p.algo,l=[],r=[],o=[],m=[],s=[],n=[],k=[],f=[],g=[],a=[];(function(){for(var c=[],b=0;256>b;b++)c[b]=128>b?b<<1:b<<1^283;for(var d=0,e=0,b=0;256>b;b++){var j=e^e<<1^e<<2^e<<3^e<<4,j=j>>>8^j&255^99;l[d]=j;r[j]=d;var i=c[d],h=c[i],p=c[h],t=257*c[j]^16843008*j;o[d]=t<<24|t>>>8;m[d]=t<<16|t>>>16;s[d]=t<<8|t>>>24;n[d]=t;t=16843009*p^65537*h^257*i^16843008*d;k[j]=t<<24|t>>>8;f[j]=t<<16|t>>>16;g[j]=t<<8|t>>>24;a[j]=t;d?(d=i^c[c[c[p^i]]],e^=c[c[e]]):d=e=1}})();
-var e=[0,1,2,4,8,16,32,64,128,27,54],i=i.AES=h.extend({_doReset:function(){for(var c=this._key,b=c.words,d=c.sigBytes/4,c=4*((this._nRounds=d+6)+1),i=this._keySchedule=[],j=0;j<c;j++)if(j<d)i[j]=b[j];else{var h=i[j-1];j%d?6<d&&4==j%d&&(h=l[h>>>24]<<24|l[h>>>16&255]<<16|l[h>>>8&255]<<8|l[h&255]):(h=h<<8|h>>>24,h=l[h>>>24]<<24|l[h>>>16&255]<<16|l[h>>>8&255]<<8|l[h&255],h^=e[j/d|0]<<24);i[j]=i[j-d]^h}b=this._invKeySchedule=[];for(d=0;d<c;d++)j=c-d,h=d%4?i[j]:i[j-4],b[d]=4>d||4>=j?h:k[l[h>>>24]]^f[l[h>>>
-16&255]]^g[l[h>>>8&255]]^a[l[h&255]]},encryptBlock:function(a,b){this._doCryptBlock(a,b,this._keySchedule,o,m,s,n,l)},decryptBlock:function(c,b){var d=c[b+1];c[b+1]=c[b+3];c[b+3]=d;this._doCryptBlock(c,b,this._invKeySchedule,k,f,g,a,r);d=c[b+1];c[b+1]=c[b+3];c[b+3]=d},_doCryptBlock:function(a,b,d,e,f,h,i,g){for(var l=this._nRounds,k=a[b]^d[0],m=a[b+1]^d[1],o=a[b+2]^d[2],n=a[b+3]^d[3],p=4,r=1;r<l;r++)var s=e[k>>>24]^f[m>>>16&255]^h[o>>>8&255]^i[n&255]^d[p++],u=e[m>>>24]^f[o>>>16&255]^h[n>>>8&255]^
-i[k&255]^d[p++],v=e[o>>>24]^f[n>>>16&255]^h[k>>>8&255]^i[m&255]^d[p++],n=e[n>>>24]^f[k>>>16&255]^h[m>>>8&255]^i[o&255]^d[p++],k=s,m=u,o=v;s=(g[k>>>24]<<24|g[m>>>16&255]<<16|g[o>>>8&255]<<8|g[n&255])^d[p++];u=(g[m>>>24]<<24|g[o>>>16&255]<<16|g[n>>>8&255]<<8|g[k&255])^d[p++];v=(g[o>>>24]<<24|g[n>>>16&255]<<16|g[k>>>8&255]<<8|g[m&255])^d[p++];n=(g[n>>>24]<<24|g[k>>>16&255]<<16|g[m>>>8&255]<<8|g[o&255])^d[p++];a[b]=s;a[b+1]=u;a[b+2]=v;a[b+3]=n},keySize:8});p.AES=h._createHelper(i)})();
+CryptoJS.lib.Cipher||function(u){var p=CryptoJS,d=p.lib,l=d.Base,s=d.WordArray,t=d.BufferedBlockAlgorithm,r=p.enc.Base64,w=p.algo.EvpKDF,v=d.Cipher=t.extend({cfg:l.extend(),createEncryptor:function(e,a){return this.create(this._ENC_XFORM_MODE,e,a)},createDecryptor:function(e,a){return this.create(this._DEC_XFORM_MODE,e,a)},init:function(e,a,b){this.cfg=this.cfg.extend(b);this._xformMode=e;this._key=a;this.reset()},reset:function(){t.reset.call(this);this._doReset()},process:function(e){this._append(e);return this._process()},
+finalize:function(e){e&&this._append(e);return this._doFinalize()},keySize:4,ivSize:4,_ENC_XFORM_MODE:1,_DEC_XFORM_MODE:2,_createHelper:function(e){return{encrypt:function(b,k,d){return("string"==typeof k?c:a).encrypt(e,b,k,d)},decrypt:function(b,k,d){return("string"==typeof k?c:a).decrypt(e,b,k,d)}}}});d.StreamCipher=v.extend({_doFinalize:function(){return this._process(!0)},blockSize:1});var b=p.mode={},x=function(e,a,b){var c=this._iv;c?this._iv=u:c=this._prevBlock;for(var d=0;d<b;d++)e[a+d]^=
+c[d]},q=(d.BlockCipherMode=l.extend({createEncryptor:function(e,a){return this.Encryptor.create(e,a)},createDecryptor:function(e,a){return this.Decryptor.create(e,a)},init:function(e,a){this._cipher=e;this._iv=a}})).extend();q.Encryptor=q.extend({processBlock:function(e,a){var b=this._cipher,c=b.blockSize;x.call(this,e,a,c);b.encryptBlock(e,a);this._prevBlock=e.slice(a,a+c)}});q.Decryptor=q.extend({processBlock:function(e,a){var b=this._cipher,c=b.blockSize,d=e.slice(a,a+c);b.decryptBlock(e,a);x.call(this,
+e,a,c);this._prevBlock=d}});b=b.CBC=q;q=(p.pad={}).Pkcs7={pad:function(a,b){for(var c=4*b,c=c-a.sigBytes%c,d=c<<24|c<<16|c<<8|c,l=[],n=0;n<c;n+=4)l.push(d);c=s.create(l,c);a.concat(c)},unpad:function(a){a.sigBytes-=a.words[a.sigBytes-1>>>2]&255}};d.BlockCipher=v.extend({cfg:v.cfg.extend({mode:b,padding:q}),reset:function(){v.reset.call(this);var a=this.cfg,b=a.iv,a=a.mode;if(this._xformMode==this._ENC_XFORM_MODE)var c=a.createEncryptor;else c=a.createDecryptor,this._minBufferSize=1;this._mode=c.call(a,
+this,b&&b.words)},_doProcessBlock:function(a,b){this._mode.processBlock(a,b)},_doFinalize:function(){var a=this.cfg.padding;if(this._xformMode==this._ENC_XFORM_MODE){a.pad(this._data,this.blockSize);var b=this._process(!0)}else b=this._process(!0),a.unpad(b);return b},blockSize:4});var n=d.CipherParams=l.extend({init:function(a){this.mixIn(a)},toString:function(a){return(a||this.formatter).stringify(this)}}),b=(p.format={}).OpenSSL={stringify:function(a){var b=a.ciphertext;a=a.salt;return(a?s.create([1398893684,
+1701076831]).concat(a).concat(b):b).toString(r)},parse:function(a){a=r.parse(a);var b=a.words;if(1398893684==b[0]&&1701076831==b[1]){var c=s.create(b.slice(2,4));b.splice(0,4);a.sigBytes-=16}return n.create({ciphertext:a,salt:c})}},a=d.SerializableCipher=l.extend({cfg:l.extend({format:b}),encrypt:function(a,b,c,d){d=this.cfg.extend(d);var l=a.createEncryptor(c,d);b=l.finalize(b);l=l.cfg;return n.create({ciphertext:b,key:c,iv:l.iv,algorithm:a,mode:l.mode,padding:l.padding,blockSize:a.blockSize,formatter:d.format})},
+decrypt:function(a,b,c,d){d=this.cfg.extend(d);b=this._parse(b,d.format);return a.createDecryptor(c,d).finalize(b.ciphertext)},_parse:function(a,b){return"string"==typeof a?b.parse(a,this):a}}),p=(p.kdf={}).OpenSSL={execute:function(a,b,c,d){d||(d=s.random(8));a=w.create({keySize:b+c}).compute(a,d);c=s.create(a.words.slice(b),4*c);a.sigBytes=4*b;return n.create({key:a,iv:c,salt:d})}},c=d.PasswordBasedCipher=a.extend({cfg:a.cfg.extend({kdf:p}),encrypt:function(b,c,d,l){l=this.cfg.extend(l);d=l.kdf.execute(d,
+b.keySize,b.ivSize);l.iv=d.iv;b=a.encrypt.call(this,b,c,d.key,l);b.mixIn(d);return b},decrypt:function(b,c,d,l){l=this.cfg.extend(l);c=this._parse(c,l.format);d=l.kdf.execute(d,b.keySize,b.ivSize,c.salt);l.iv=d.iv;return a.decrypt.call(this,b,c,d.key,l)}})}();
+(function(){for(var u=CryptoJS,p=u.lib.BlockCipher,d=u.algo,l=[],s=[],t=[],r=[],w=[],v=[],b=[],x=[],q=[],n=[],a=[],c=0;256>c;c++)a[c]=128>c?c<<1:c<<1^283;for(var e=0,j=0,c=0;256>c;c++){var k=j^j<<1^j<<2^j<<3^j<<4,k=k>>>8^k&255^99;l[e]=k;s[k]=e;var z=a[e],F=a[z],G=a[F],y=257*a[k]^16843008*k;t[e]=y<<24|y>>>8;r[e]=y<<16|y>>>16;w[e]=y<<8|y>>>24;v[e]=y;y=16843009*G^65537*F^257*z^16843008*e;b[k]=y<<24|y>>>8;x[k]=y<<16|y>>>16;q[k]=y<<8|y>>>24;n[k]=y;e?(e=z^a[a[a[G^z]]],j^=a[a[j]]):e=j=1}var H=[0,1,2,4,8,
+16,32,64,128,27,54],d=d.AES=p.extend({_doReset:function(){for(var a=this._key,c=a.words,d=a.sigBytes/4,a=4*((this._nRounds=d+6)+1),e=this._keySchedule=[],j=0;j<a;j++)if(j<d)e[j]=c[j];else{var k=e[j-1];j%d?6<d&&4==j%d&&(k=l[k>>>24]<<24|l[k>>>16&255]<<16|l[k>>>8&255]<<8|l[k&255]):(k=k<<8|k>>>24,k=l[k>>>24]<<24|l[k>>>16&255]<<16|l[k>>>8&255]<<8|l[k&255],k^=H[j/d|0]<<24);e[j]=e[j-d]^k}c=this._invKeySchedule=[];for(d=0;d<a;d++)j=a-d,k=d%4?e[j]:e[j-4],c[d]=4>d||4>=j?k:b[l[k>>>24]]^x[l[k>>>16&255]]^q[l[k>>>
+8&255]]^n[l[k&255]]},encryptBlock:function(a,b){this._doCryptBlock(a,b,this._keySchedule,t,r,w,v,l)},decryptBlock:function(a,c){var d=a[c+1];a[c+1]=a[c+3];a[c+3]=d;this._doCryptBlock(a,c,this._invKeySchedule,b,x,q,n,s);d=a[c+1];a[c+1]=a[c+3];a[c+3]=d},_doCryptBlock:function(a,b,c,d,e,j,l,f){for(var m=this._nRounds,g=a[b]^c[0],h=a[b+1]^c[1],k=a[b+2]^c[2],n=a[b+3]^c[3],p=4,r=1;r<m;r++)var q=d[g>>>24]^e[h>>>16&255]^j[k>>>8&255]^l[n&255]^c[p++],s=d[h>>>24]^e[k>>>16&255]^j[n>>>8&255]^l[g&255]^c[p++],t=
+d[k>>>24]^e[n>>>16&255]^j[g>>>8&255]^l[h&255]^c[p++],n=d[n>>>24]^e[g>>>16&255]^j[h>>>8&255]^l[k&255]^c[p++],g=q,h=s,k=t;q=(f[g>>>24]<<24|f[h>>>16&255]<<16|f[k>>>8&255]<<8|f[n&255])^c[p++];s=(f[h>>>24]<<24|f[k>>>16&255]<<16|f[n>>>8&255]<<8|f[g&255])^c[p++];t=(f[k>>>24]<<24|f[n>>>16&255]<<16|f[g>>>8&255]<<8|f[h&255])^c[p++];n=(f[n>>>24]<<24|f[g>>>16&255]<<16|f[h>>>8&255]<<8|f[k&255])^c[p++];a[b]=q;a[b+1]=s;a[b+2]=t;a[b+3]=n},keySize:8});u.AES=p._createHelper(d)})();
 /*
-CryptoJS v3.0.2
+CryptoJS v3.1.2
 code.google.com/p/crypto-js
-(c) 2009-2012 by Jeff Mott. All rights reserved.
+(c) 2009-2013 by Jeff Mott. All rights reserved.
 code.google.com/p/crypto-js/wiki/License
 */
 
-var CryptoJS=CryptoJS||function(i,m){var p={},h=p.lib={},n=h.Base=function(){function a(){}return{extend:function(b){a.prototype=this;var c=new a;b&&c.mixIn(b);c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.$super.extend(this)}}}(),o=h.WordArray=n.extend({init:function(a,b){a=
-this.words=a||[];this.sigBytes=b!=m?b:4*a.length},toString:function(a){return(a||e).stringify(this)},concat:function(a){var b=this.words,c=a.words,d=this.sigBytes,a=a.sigBytes;this.clamp();if(d%4)for(var f=0;f<a;f++)b[d+f>>>2]|=(c[f>>>2]>>>24-8*(f%4)&255)<<24-8*((d+f)%4);else if(65535<c.length)for(f=0;f<a;f+=4)b[d+f>>>2]=c[f>>>2];else b.push.apply(b,c);this.sigBytes+=a;return this},clamp:function(){var a=this.words,b=this.sigBytes;a[b>>>2]&=4294967295<<32-8*(b%4);a.length=i.ceil(b/4)},clone:function(){var a=
-n.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var b=[],c=0;c<a;c+=4)b.push(4294967296*i.random()|0);return o.create(b,a)}}),q=p.enc={},e=q.Hex={stringify:function(a){for(var b=a.words,a=a.sigBytes,c=[],d=0;d<a;d++){var f=b[d>>>2]>>>24-8*(d%4)&255;c.push((f>>>4).toString(16));c.push((f&15).toString(16))}return c.join("")},parse:function(a){for(var b=a.length,c=[],d=0;d<b;d+=2)c[d>>>3]|=parseInt(a.substr(d,2),16)<<24-4*(d%8);return o.create(c,b/2)}},g=q.Latin1={stringify:function(a){for(var b=
-a.words,a=a.sigBytes,c=[],d=0;d<a;d++)c.push(String.fromCharCode(b[d>>>2]>>>24-8*(d%4)&255));return c.join("")},parse:function(a){for(var b=a.length,c=[],d=0;d<b;d++)c[d>>>2]|=(a.charCodeAt(d)&255)<<24-8*(d%4);return o.create(c,b)}},j=q.Utf8={stringify:function(a){try{return decodeURIComponent(escape(g.stringify(a)))}catch(b){throw Error("Malformed UTF-8 data");}},parse:function(a){return g.parse(unescape(encodeURIComponent(a)))}},k=h.BufferedBlockAlgorithm=n.extend({reset:function(){this._data=o.create();
-this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=j.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var b=this._data,c=b.words,d=b.sigBytes,f=this.blockSize,e=d/(4*f),e=a?i.ceil(e):i.max((e|0)-this._minBufferSize,0),a=e*f,d=i.min(4*a,d);if(a){for(var g=0;g<a;g+=f)this._doProcessBlock(c,g);g=c.splice(0,a);b.sigBytes-=d}return o.create(g,d)},clone:function(){var a=n.clone.call(this);a._data=this._data.clone();return a},_minBufferSize:0});h.Hasher=k.extend({init:function(){this.reset()},
-reset:function(){k.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);this._doFinalize();return this._hash},clone:function(){var a=k.clone.call(this);a._hash=this._hash.clone();return a},blockSize:16,_createHelper:function(a){return function(b,c){return a.create(c).finalize(b)}},_createHmacHelper:function(a){return function(b,c){return l.HMAC.create(a,c).finalize(b)}}});var l=p.algo={};return p}(Math);
-(function(){var i=CryptoJS,m=i.lib,p=m.WordArray,m=m.Hasher,h=[],n=i.algo.SHA1=m.extend({_doReset:function(){this._hash=p.create([1732584193,4023233417,2562383102,271733878,3285377520])},_doProcessBlock:function(o,i){for(var e=this._hash.words,g=e[0],j=e[1],k=e[2],l=e[3],a=e[4],b=0;80>b;b++){if(16>b)h[b]=o[i+b]|0;else{var c=h[b-3]^h[b-8]^h[b-14]^h[b-16];h[b]=c<<1|c>>>31}c=(g<<5|g>>>27)+a+h[b];c=20>b?c+((j&k|~j&l)+1518500249):40>b?c+((j^k^l)+1859775393):60>b?c+((j&k|j&l|k&l)-1894007588):c+((j^k^l)-
-899497514);a=l;l=k;k=j<<30|j>>>2;j=g;g=c}e[0]=e[0]+g|0;e[1]=e[1]+j|0;e[2]=e[2]+k|0;e[3]=e[3]+l|0;e[4]=e[4]+a|0},_doFinalize:function(){var i=this._data,h=i.words,e=8*this._nDataBytes,g=8*i.sigBytes;h[g>>>5]|=128<<24-g%32;h[(g+64>>>9<<4)+15]=e;i.sigBytes=4*h.length;this._process()}});i.SHA1=m._createHelper(n);i.HmacSHA1=m._createHmacHelper(n)})();
+var CryptoJS=CryptoJS||function(e,m){var p={},j=p.lib={},l=function(){},f=j.Base={extend:function(a){l.prototype=this;var c=new l;a&&c.mixIn(a);c.hasOwnProperty("init")||(c.init=function(){c.$super.init.apply(this,arguments)});c.init.prototype=c;c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.init.prototype.extend(this)}},
+n=j.WordArray=f.extend({init:function(a,c){a=this.words=a||[];this.sigBytes=c!=m?c:4*a.length},toString:function(a){return(a||h).stringify(this)},concat:function(a){var c=this.words,q=a.words,d=this.sigBytes;a=a.sigBytes;this.clamp();if(d%4)for(var b=0;b<a;b++)c[d+b>>>2]|=(q[b>>>2]>>>24-8*(b%4)&255)<<24-8*((d+b)%4);else if(65535<q.length)for(b=0;b<a;b+=4)c[d+b>>>2]=q[b>>>2];else c.push.apply(c,q);this.sigBytes+=a;return this},clamp:function(){var a=this.words,c=this.sigBytes;a[c>>>2]&=4294967295<<
+32-8*(c%4);a.length=e.ceil(c/4)},clone:function(){var a=f.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var c=[],b=0;b<a;b+=4)c.push(4294967296*e.random()|0);return new n.init(c,a)}}),b=p.enc={},h=b.Hex={stringify:function(a){var c=a.words;a=a.sigBytes;for(var b=[],d=0;d<a;d++){var f=c[d>>>2]>>>24-8*(d%4)&255;b.push((f>>>4).toString(16));b.push((f&15).toString(16))}return b.join("")},parse:function(a){for(var c=a.length,b=[],d=0;d<c;d+=2)b[d>>>3]|=parseInt(a.substr(d,
+2),16)<<24-4*(d%8);return new n.init(b,c/2)}},g=b.Latin1={stringify:function(a){var c=a.words;a=a.sigBytes;for(var b=[],d=0;d<a;d++)b.push(String.fromCharCode(c[d>>>2]>>>24-8*(d%4)&255));return b.join("")},parse:function(a){for(var c=a.length,b=[],d=0;d<c;d++)b[d>>>2]|=(a.charCodeAt(d)&255)<<24-8*(d%4);return new n.init(b,c)}},r=b.Utf8={stringify:function(a){try{return decodeURIComponent(escape(g.stringify(a)))}catch(c){throw Error("Malformed UTF-8 data");}},parse:function(a){return g.parse(unescape(encodeURIComponent(a)))}},
+k=j.BufferedBlockAlgorithm=f.extend({reset:function(){this._data=new n.init;this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=r.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var c=this._data,b=c.words,d=c.sigBytes,f=this.blockSize,h=d/(4*f),h=a?e.ceil(h):e.max((h|0)-this._minBufferSize,0);a=h*f;d=e.min(4*a,d);if(a){for(var g=0;g<a;g+=f)this._doProcessBlock(b,g);g=b.splice(0,a);c.sigBytes-=d}return new n.init(g,d)},clone:function(){var a=f.clone.call(this);
+a._data=this._data.clone();return a},_minBufferSize:0});j.Hasher=k.extend({cfg:f.extend(),init:function(a){this.cfg=this.cfg.extend(a);this.reset()},reset:function(){k.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);return this._doFinalize()},blockSize:16,_createHelper:function(a){return function(c,b){return(new a.init(b)).finalize(c)}},_createHmacHelper:function(a){return function(b,f){return(new s.HMAC.init(a,
+f)).finalize(b)}}});var s=p.algo={};return p}(Math);
+(function(){var e=CryptoJS,m=e.lib,p=m.WordArray,j=m.Hasher,l=[],m=e.algo.SHA1=j.extend({_doReset:function(){this._hash=new p.init([1732584193,4023233417,2562383102,271733878,3285377520])},_doProcessBlock:function(f,n){for(var b=this._hash.words,h=b[0],g=b[1],e=b[2],k=b[3],j=b[4],a=0;80>a;a++){if(16>a)l[a]=f[n+a]|0;else{var c=l[a-3]^l[a-8]^l[a-14]^l[a-16];l[a]=c<<1|c>>>31}c=(h<<5|h>>>27)+j+l[a];c=20>a?c+((g&e|~g&k)+1518500249):40>a?c+((g^e^k)+1859775393):60>a?c+((g&e|g&k|e&k)-1894007588):c+((g^e^
+k)-899497514);j=k;k=e;e=g<<30|g>>>2;g=h;h=c}b[0]=b[0]+h|0;b[1]=b[1]+g|0;b[2]=b[2]+e|0;b[3]=b[3]+k|0;b[4]=b[4]+j|0},_doFinalize:function(){var f=this._data,e=f.words,b=8*this._nDataBytes,h=8*f.sigBytes;e[h>>>5]|=128<<24-h%32;e[(h+64>>>9<<4)+14]=Math.floor(b/4294967296);e[(h+64>>>9<<4)+15]=b;f.sigBytes=4*e.length;this._process();return this._hash},clone:function(){var e=j.clone.call(this);e._hash=this._hash.clone();return e}});e.SHA1=j._createHelper(m);e.HmacSHA1=j._createHmacHelper(m)})();
 /*
-CryptoJS v3.0.2
+CryptoJS v3.1.2
 code.google.com/p/crypto-js
-(c) 2009-2012 by Jeff Mott. All rights reserved.
+(c) 2009-2013 by Jeff Mott. All rights reserved.
 code.google.com/p/crypto-js/wiki/License
 */
 
-var CryptoJS=CryptoJS||function(g,i){var f={},b=f.lib={},m=b.Base=function(){function a(){}return{extend:function(e){a.prototype=this;var c=new a;e&&c.mixIn(e);c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.$super.extend(this)}}}(),l=b.WordArray=m.extend({init:function(a,e){a=
-this.words=a||[];this.sigBytes=e!=i?e:4*a.length},toString:function(a){return(a||d).stringify(this)},concat:function(a){var e=this.words,c=a.words,o=this.sigBytes,a=a.sigBytes;this.clamp();if(o%4)for(var b=0;b<a;b++)e[o+b>>>2]|=(c[b>>>2]>>>24-8*(b%4)&255)<<24-8*((o+b)%4);else if(65535<c.length)for(b=0;b<a;b+=4)e[o+b>>>2]=c[b>>>2];else e.push.apply(e,c);this.sigBytes+=a;return this},clamp:function(){var a=this.words,e=this.sigBytes;a[e>>>2]&=4294967295<<32-8*(e%4);a.length=g.ceil(e/4)},clone:function(){var a=
-m.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var e=[],c=0;c<a;c+=4)e.push(4294967296*g.random()|0);return l.create(e,a)}}),n=f.enc={},d=n.Hex={stringify:function(a){for(var e=a.words,a=a.sigBytes,c=[],b=0;b<a;b++){var d=e[b>>>2]>>>24-8*(b%4)&255;c.push((d>>>4).toString(16));c.push((d&15).toString(16))}return c.join("")},parse:function(a){for(var e=a.length,c=[],b=0;b<e;b+=2)c[b>>>3]|=parseInt(a.substr(b,2),16)<<24-4*(b%8);return l.create(c,e/2)}},j=n.Latin1={stringify:function(a){for(var e=
-a.words,a=a.sigBytes,b=[],d=0;d<a;d++)b.push(String.fromCharCode(e[d>>>2]>>>24-8*(d%4)&255));return b.join("")},parse:function(a){for(var b=a.length,c=[],d=0;d<b;d++)c[d>>>2]|=(a.charCodeAt(d)&255)<<24-8*(d%4);return l.create(c,b)}},k=n.Utf8={stringify:function(a){try{return decodeURIComponent(escape(j.stringify(a)))}catch(b){throw Error("Malformed UTF-8 data");}},parse:function(a){return j.parse(unescape(encodeURIComponent(a)))}},h=b.BufferedBlockAlgorithm=m.extend({reset:function(){this._data=l.create();
-this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=k.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var b=this._data,c=b.words,d=b.sigBytes,j=this.blockSize,h=d/(4*j),h=a?g.ceil(h):g.max((h|0)-this._minBufferSize,0),a=h*j,d=g.min(4*a,d);if(a){for(var f=0;f<a;f+=j)this._doProcessBlock(c,f);f=c.splice(0,a);b.sigBytes-=d}return l.create(f,d)},clone:function(){var a=m.clone.call(this);a._data=this._data.clone();return a},_minBufferSize:0});b.Hasher=h.extend({init:function(){this.reset()},
-reset:function(){h.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);this._doFinalize();return this._hash},clone:function(){var a=h.clone.call(this);a._hash=this._hash.clone();return a},blockSize:16,_createHelper:function(a){return function(b,c){return a.create(c).finalize(b)}},_createHmacHelper:function(a){return function(b,c){return u.HMAC.create(a,c).finalize(b)}}});var u=f.algo={};return f}(Math);
-(function(){var g=CryptoJS,i=g.lib,f=i.WordArray,i=i.Hasher,b=[],m=g.algo.SHA1=i.extend({_doReset:function(){this._hash=f.create([1732584193,4023233417,2562383102,271733878,3285377520])},_doProcessBlock:function(f,n){for(var d=this._hash.words,j=d[0],k=d[1],h=d[2],g=d[3],a=d[4],e=0;80>e;e++){if(16>e)b[e]=f[n+e]|0;else{var c=b[e-3]^b[e-8]^b[e-14]^b[e-16];b[e]=c<<1|c>>>31}c=(j<<5|j>>>27)+a+b[e];c=20>e?c+((k&h|~k&g)+1518500249):40>e?c+((k^h^g)+1859775393):60>e?c+((k&h|k&g|h&g)-1894007588):c+((k^h^g)-
-899497514);a=g;g=h;h=k<<30|k>>>2;k=j;j=c}d[0]=d[0]+j|0;d[1]=d[1]+k|0;d[2]=d[2]+h|0;d[3]=d[3]+g|0;d[4]=d[4]+a|0},_doFinalize:function(){var b=this._data,f=b.words,d=8*this._nDataBytes,j=8*b.sigBytes;f[j>>>5]|=128<<24-j%32;f[(j+64>>>9<<4)+15]=d;b.sigBytes=4*f.length;this._process()}});g.SHA1=i._createHelper(m);g.HmacSHA1=i._createHmacHelper(m)})();
-(function(){var g=CryptoJS,i=g.enc.Utf8;g.algo.HMAC=g.lib.Base.extend({init:function(f,b){f=this._hasher=f.create();"string"==typeof b&&(b=i.parse(b));var g=f.blockSize,l=4*g;b.sigBytes>l&&(b=f.finalize(b));for(var n=this._oKey=b.clone(),d=this._iKey=b.clone(),j=n.words,k=d.words,h=0;h<g;h++)j[h]^=1549556828,k[h]^=909522486;n.sigBytes=d.sigBytes=l;this.reset()},reset:function(){var f=this._hasher;f.reset();f.update(this._iKey)},update:function(f){this._hasher.update(f);return this},finalize:function(f){var b=
-this._hasher,f=b.finalize(f);b.reset();return b.finalize(this._oKey.clone().concat(f))}})})();
-(function(){var g=CryptoJS,i=g.lib,f=i.Base,b=i.WordArray,i=g.algo,m=i.HMAC,l=i.PBKDF2=f.extend({cfg:f.extend({keySize:4,hasher:i.SHA1,iterations:1}),init:function(b){this.cfg=this.cfg.extend(b)},compute:function(f,d){for(var g=this.cfg,k=m.create(g.hasher,f),h=b.create(),i=b.create([1]),a=h.words,e=i.words,c=g.keySize,g=g.iterations;a.length<c;){var l=k.update(d).finalize(i);k.reset();for(var q=l.words,t=q.length,r=l,s=1;s<g;s++){r=k.finalize(r);k.reset();for(var v=r.words,p=0;p<t;p++)q[p]^=v[p]}h.concat(l);
-e[0]++}h.sigBytes=4*c;return h}});g.PBKDF2=function(b,d,f){return l.create(f).compute(b,d)}})();
-
-
-
-
+var CryptoJS=CryptoJS||function(g,j){var e={},d=e.lib={},m=function(){},n=d.Base={extend:function(a){m.prototype=this;var c=new m;a&&c.mixIn(a);c.hasOwnProperty("init")||(c.init=function(){c.$super.init.apply(this,arguments)});c.init.prototype=c;c.$super=this;return c},create:function(){var a=this.extend();a.init.apply(a,arguments);return a},init:function(){},mixIn:function(a){for(var c in a)a.hasOwnProperty(c)&&(this[c]=a[c]);a.hasOwnProperty("toString")&&(this.toString=a.toString)},clone:function(){return this.init.prototype.extend(this)}},
+q=d.WordArray=n.extend({init:function(a,c){a=this.words=a||[];this.sigBytes=c!=j?c:4*a.length},toString:function(a){return(a||l).stringify(this)},concat:function(a){var c=this.words,p=a.words,f=this.sigBytes;a=a.sigBytes;this.clamp();if(f%4)for(var b=0;b<a;b++)c[f+b>>>2]|=(p[b>>>2]>>>24-8*(b%4)&255)<<24-8*((f+b)%4);else if(65535<p.length)for(b=0;b<a;b+=4)c[f+b>>>2]=p[b>>>2];else c.push.apply(c,p);this.sigBytes+=a;return this},clamp:function(){var a=this.words,c=this.sigBytes;a[c>>>2]&=4294967295<<
+32-8*(c%4);a.length=g.ceil(c/4)},clone:function(){var a=n.clone.call(this);a.words=this.words.slice(0);return a},random:function(a){for(var c=[],b=0;b<a;b+=4)c.push(4294967296*g.random()|0);return new q.init(c,a)}}),b=e.enc={},l=b.Hex={stringify:function(a){var c=a.words;a=a.sigBytes;for(var b=[],f=0;f<a;f++){var d=c[f>>>2]>>>24-8*(f%4)&255;b.push((d>>>4).toString(16));b.push((d&15).toString(16))}return b.join("")},parse:function(a){for(var c=a.length,b=[],f=0;f<c;f+=2)b[f>>>3]|=parseInt(a.substr(f,
+2),16)<<24-4*(f%8);return new q.init(b,c/2)}},k=b.Latin1={stringify:function(a){var c=a.words;a=a.sigBytes;for(var b=[],f=0;f<a;f++)b.push(String.fromCharCode(c[f>>>2]>>>24-8*(f%4)&255));return b.join("")},parse:function(a){for(var c=a.length,b=[],f=0;f<c;f++)b[f>>>2]|=(a.charCodeAt(f)&255)<<24-8*(f%4);return new q.init(b,c)}},h=b.Utf8={stringify:function(a){try{return decodeURIComponent(escape(k.stringify(a)))}catch(b){throw Error("Malformed UTF-8 data");}},parse:function(a){return k.parse(unescape(encodeURIComponent(a)))}},
+u=d.BufferedBlockAlgorithm=n.extend({reset:function(){this._data=new q.init;this._nDataBytes=0},_append:function(a){"string"==typeof a&&(a=h.parse(a));this._data.concat(a);this._nDataBytes+=a.sigBytes},_process:function(a){var b=this._data,d=b.words,f=b.sigBytes,l=this.blockSize,e=f/(4*l),e=a?g.ceil(e):g.max((e|0)-this._minBufferSize,0);a=e*l;f=g.min(4*a,f);if(a){for(var h=0;h<a;h+=l)this._doProcessBlock(d,h);h=d.splice(0,a);b.sigBytes-=f}return new q.init(h,f)},clone:function(){var a=n.clone.call(this);
+a._data=this._data.clone();return a},_minBufferSize:0});d.Hasher=u.extend({cfg:n.extend(),init:function(a){this.cfg=this.cfg.extend(a);this.reset()},reset:function(){u.reset.call(this);this._doReset()},update:function(a){this._append(a);this._process();return this},finalize:function(a){a&&this._append(a);return this._doFinalize()},blockSize:16,_createHelper:function(a){return function(b,d){return(new a.init(d)).finalize(b)}},_createHmacHelper:function(a){return function(b,d){return(new w.HMAC.init(a,
+d)).finalize(b)}}});var w=e.algo={};return e}(Math);
+(function(){var g=CryptoJS,j=g.lib,e=j.WordArray,d=j.Hasher,m=[],j=g.algo.SHA1=d.extend({_doReset:function(){this._hash=new e.init([1732584193,4023233417,2562383102,271733878,3285377520])},_doProcessBlock:function(d,e){for(var b=this._hash.words,l=b[0],k=b[1],h=b[2],g=b[3],j=b[4],a=0;80>a;a++){if(16>a)m[a]=d[e+a]|0;else{var c=m[a-3]^m[a-8]^m[a-14]^m[a-16];m[a]=c<<1|c>>>31}c=(l<<5|l>>>27)+j+m[a];c=20>a?c+((k&h|~k&g)+1518500249):40>a?c+((k^h^g)+1859775393):60>a?c+((k&h|k&g|h&g)-1894007588):c+((k^h^
+g)-899497514);j=g;g=h;h=k<<30|k>>>2;k=l;l=c}b[0]=b[0]+l|0;b[1]=b[1]+k|0;b[2]=b[2]+h|0;b[3]=b[3]+g|0;b[4]=b[4]+j|0},_doFinalize:function(){var d=this._data,e=d.words,b=8*this._nDataBytes,l=8*d.sigBytes;e[l>>>5]|=128<<24-l%32;e[(l+64>>>9<<4)+14]=Math.floor(b/4294967296);e[(l+64>>>9<<4)+15]=b;d.sigBytes=4*e.length;this._process();return this._hash},clone:function(){var e=d.clone.call(this);e._hash=this._hash.clone();return e}});g.SHA1=d._createHelper(j);g.HmacSHA1=d._createHmacHelper(j)})();
+(function(){var g=CryptoJS,j=g.enc.Utf8;g.algo.HMAC=g.lib.Base.extend({init:function(e,d){e=this._hasher=new e.init;"string"==typeof d&&(d=j.parse(d));var g=e.blockSize,n=4*g;d.sigBytes>n&&(d=e.finalize(d));d.clamp();for(var q=this._oKey=d.clone(),b=this._iKey=d.clone(),l=q.words,k=b.words,h=0;h<g;h++)l[h]^=1549556828,k[h]^=909522486;q.sigBytes=b.sigBytes=n;this.reset()},reset:function(){var e=this._hasher;e.reset();e.update(this._iKey)},update:function(e){this._hasher.update(e);return this},finalize:function(e){var d=
+this._hasher;e=d.finalize(e);d.reset();return d.finalize(this._oKey.clone().concat(e))}})})();
+(function(){var g=CryptoJS,j=g.lib,e=j.Base,d=j.WordArray,j=g.algo,m=j.HMAC,n=j.PBKDF2=e.extend({cfg:e.extend({keySize:4,hasher:j.SHA1,iterations:1}),init:function(d){this.cfg=this.cfg.extend(d)},compute:function(e,b){for(var g=this.cfg,k=m.create(g.hasher,e),h=d.create(),j=d.create([1]),n=h.words,a=j.words,c=g.keySize,g=g.iterations;n.length<c;){var p=k.update(b).finalize(j);k.reset();for(var f=p.words,v=f.length,s=p,t=1;t<g;t++){s=k.finalize(s);k.reset();for(var x=s.words,r=0;r<v;r++)f[r]^=x[r]}h.concat(p);
+a[0]++}h.sigBytes=4*c;return h}});g.PBKDF2=function(d,b,e){return n.create(e).compute(d,b)}})();
 
 
 
@@ -2241,29 +1450,15 @@ if (typeof(window) !== "undefined") {
 (function ($, $$) {
   "use strict";
 
-  $$.keys = function (object) {
-    var keys = [ ];
-    $$.each(object, function (key) {
-      keys.push(key);
+  $$.include = function (array, value) {
+    return !!$$.detect(array, function (index, item) {
+      return item === value;
     });
-    return keys;
-  };
-
-  $$.each = function (arrayOrObject, handler) {
-    if (!arrayOrObject || arrayOrObject.length === 0) {
-      return;
-    }
-
-    for (var index in arrayOrObject) {
-      if (arrayOrObject.hasOwnProperty(index)) {
-        handler(index, arrayOrObject[index]);
-      }
-    }
   };
 
   $$.map = function (array, handler) {
     var result = new Array(array.length);
-    $$.each(array, function (index, value) {
+    $.Iterator.each(array, function (index, value) {
       result[index] = handler(index, value);
     });
     return result;
@@ -2271,26 +1466,20 @@ if (typeof(window) !== "undefined") {
 
   $$.reduce = function (array, initialValue, handler) {
     var result = initialValue;
-    this.each(array, function (index, item) {
+    $.Iterator.each(array, function (index, item) {
       result = handler(result, item);
     });
     return result;
   };
 
-  $$.include = function (array, value) {
-    return !!$$.detect(array, function (index, item) {
-      return item === value;
-    });
-  };
-
-  $$.detect = function (arrayOrObject, handler) {
-    if (!arrayOrObject) {
-      return;
+  $$.detect = function (array, handler) {
+    if (!array) {
+      return array;
     }
 
-    for (var index in arrayOrObject) {
-      if (arrayOrObject.hasOwnProperty(index)) {
-        var value = arrayOrObject[index];
+    for (var index in array) {
+      if (array.hasOwnProperty(index)) {
+        var value = array[index];
         if (handler(index, value)) {
           return value;
         }
@@ -2308,7 +1497,7 @@ if (typeof(window) !== "undefined") {
 
   $$.select = function (array, handler) {
     var result = [ ];
-    this.each(array, function (index, item) {
+    $.Iterator.each(array, function (index, item) {
       if (handler(index, item)) {
         result.push(item);
       }
@@ -2322,7 +1511,7 @@ if (typeof(window) !== "undefined") {
     });
   };
 
-  $$.selectNotNull = function (array) {
+  $$.selectTruthy = function (array) {
     return $$.select(array, function (index, value) {
       return !!value;
     });
@@ -2330,7 +1519,7 @@ if (typeof(window) !== "undefined") {
 
   $$.remove = function (array, item) {
     for (var index in array) {
-      if (item === array[index]) {
+      if (array.hasOwnProperty(index) && item === array[index]) {
         array.splice(index, 1);
       }
     }
@@ -2350,25 +1539,30 @@ if (typeof(window) !== "undefined") {
     return results;
   };
 
-  $$.count = function (array, handler) {
-    var result = 0;
-    this.each(array, function (index, item) {
-      if (handler(index, item)) {
-        result++;
-      }
-    });
-    return result;
-  };
+  $$.removeDuplicates = function (array, handler) {
+    if (!array) {
+      return array;
+    }
 
-  $$.countObjectsWith = function (array, key, value) {
-    return this.count(array, function (index, object) {
-      return object[key] === value;
-    });
+    handler = handler || function (item, searchItem) {
+      return item == searchItem;
+    };
+
+    for (var index = 0; index < array.length; index++) {
+      var item = array[index];
+      for (var searchIndex = index + 1; searchIndex < array.length; searchIndex++) {
+        if (handler(item, array[searchIndex])) {
+          array.splice(searchIndex, 1);
+        }
+      }
+    }
+
+    return array;
   };
 
   $$.compare = function (arrayOne, arrayTwo) {
     var result = arrayOne.length === arrayTwo.length;
-    $$.each(arrayOne, function (index, item) {
+    $.Iterator.each(arrayOne, function (index, item) {
       result = result && (item === arrayTwo[index]);
     });
     return result;
@@ -2377,7 +1571,7 @@ if (typeof(window) !== "undefined") {
   $$.without = function (arrayOne, arrayTwo) {
     var result = [ ];
 
-    $$.each(arrayOne, function (index, item) {
+    $.Iterator.each(arrayOne, function (index, item) {
       if (!$$.include(arrayTwo, item)) {
         result.push(item);
       }
@@ -2404,10 +1598,36 @@ if (typeof(window) !== "undefined") {
   };
 
 }(epdRoot,
+  epdRoot.Collection = epdRoot.Collection || { }));
+
+(function ($, $$) {
+  "use strict";
+
+  $$.each = function (arrayOrObject, handler) {
+    if (!arrayOrObject || arrayOrObject.length === 0) {
+      return;
+    }
+
+    for (var index in arrayOrObject) {
+      if (arrayOrObject.hasOwnProperty(index)) {
+        handler(index, arrayOrObject[index]);
+      }
+    }
+  };
+
+}(epdRoot,
   epdRoot.Iterator = epdRoot.Iterator || { }));
 
 (function ($, $$) {
   "use strict";
+
+  $$.keys = function (object) {
+    var keys = [ ];
+    $.Iterator.each(object, function (key) {
+      keys.push(key);
+    });
+    return keys;
+  };
 
   $$.clone = function (object) {
     if (!object) {
@@ -2449,7 +1669,7 @@ if (typeof(window) !== "undefined") {
   };
 
   $$.valueIn = function (object, dataPath) {
-    return $.Iterator.reduce(dataPath ? dataPath.split(".") : [ ], object, function (result, attribute) {
+    return $.Collection.reduce(dataPath ? dataPath.split(".") : [ ], object, function (result, attribute) {
       return result ? result[attribute] : result;
     });
   };
@@ -2461,9 +1681,9 @@ if (typeof(window) !== "undefined") {
       case "string":
         return object;
       case "object":
-        var keys = $.Iterator.keys(object);
+        var keys = $$.keys(object);
         keys.sort();
-        return $.Iterator.reduce(keys, "", function (result, key) {
+        return $.Collection.reduce(keys, "", function (result, key) {
           var value = object[key];
           return result + (value === undefined ? "" : key + $$.stringify(value));
         });
@@ -2490,19 +1710,19 @@ if (typeof(window) !== "undefined") {
 (function ($, $$, $$$) {
   "use strict";
 
-  var _defaultKeyBits = 1024,
-      _defaultPublicExponent = "00000003",
+  var _defaultKeyBits = 1024
+    , _defaultPublicExponent = "00000003"
 
-      _joinArrays = function (arrays) {
+    , _joinArrays = function (arrays) {
         var result = [ ];
         $.Iterator.each(arrays, function (index, array) {
           result.push(array.length);
           result = result.concat(array);
         });
         return result;
-      },
+      }
 
-      _splitArrays = function (array) {
+    , _splitArrays = function (array) {
         var results = [ ];
         for (var index = 0; index < array.length; ) {
           var length = array[index];
@@ -2511,38 +1731,34 @@ if (typeof(window) !== "undefined") {
           index += length;
         }
         return results;
-      },
+      }
 
-      _hexToBase64 = function (hex) {
+    , _hexToBase64 = function (hex) {
         return _arrayToBase64(_hexToArray(hex));
-      },
-      _base64ToHex = function (base64) {
+      }
+    , _base64ToHex = function (base64) {
         return _arrayToHex(_base64ToArray(base64));
-      },
-      _arrayToBase64 = function (array) {
+      }
+    , _arrayToBase64 = function (array) {
         return CryptoJS.enc.Base64.stringify(CryptoJS.lib.WordArray.create(array));
-      },
-      _base64ToArray = function (base64) {
+      }
+    , _base64ToArray = function (base64) {
         return CryptoJS.enc.Base64.parse(base64).words;
-      },
-      _hexToArray = function (hex) {
+      }
+    , _hexToArray = function (hex) {
         return CryptoJS.enc.Hex.parse(hex).words;
-      },
-      _arrayToHex = function (array) {
+      }
+    , _arrayToHex = function (array) {
         return CryptoJS.enc.Hex.stringify(CryptoJS.lib.WordArray.create(array));
       };
 
   $$$.generateKeyPair = function (keyBits) {
-    var rsa = new RSAKey(),
-        bits = keyBits || _defaultKeyBits,
-        modulus, publicExponent, privateExponent;
+    var rsa = new $$$.RSA.Key()
+      , bits = keyBits || _defaultKeyBits
+      , modulus, publicExponent, privateExponent;
 
-    // workaround:
-    // for some reason, the generate modulus has only 1023 bits (instead of 1024).
-    // in that case, the key is just generated again
-    while (!rsa.n || rsa.n.bitLength() !== bits) {
-      rsa.generate(bits, _defaultPublicExponent);
-    }
+    rsa.generate(bits, _defaultPublicExponent);
+
     modulus = _hexToArray(rsa.n.toString(16));
     publicExponent = _hexToArray(_defaultPublicExponent);
     privateExponent = _hexToArray(rsa.d.toString(16));
@@ -2556,10 +1772,10 @@ if (typeof(window) !== "undefined") {
   $$$.encrypt = function (message, publicKey) {
     $$.Coder.ensureType("rsaKey", publicKey);
 
-    var rsa = new RSAKey();
+    var rsaKey = new $$$.RSA.Key();
 
-    rsa.setPublic(_arrayToHex(publicKey.modulus), _arrayToHex(publicKey.exponent));
-    return { type: "rsaEncryptedData", data: rsa.encrypt(message) };
+    rsaKey.setPublic(_arrayToHex(publicKey.modulus), _arrayToHex(publicKey.exponent));
+    return { type: "rsaEncryptedData", data: $$$.RSA.encrypt(message, rsaKey) };
   };
 
   $$$.decrypt = function (encrypted, publicKey, privateKey) {
@@ -2567,18 +1783,18 @@ if (typeof(window) !== "undefined") {
     $$.Coder.ensureType("rsaKey", publicKey);
     $$.Coder.ensureType("rsaKey", privateKey);
 
-    var rsa = new RSAKey();
+    var rsaKey = new $$$.RSA.Key();
 
-    rsa.setPrivate(_arrayToHex(privateKey.modulus), _arrayToHex(publicKey.exponent), _arrayToHex(privateKey.exponent));
-    return rsa.decrypt(encrypted.data);
+    rsaKey.setPrivate(_arrayToHex(privateKey.modulus), _arrayToHex(publicKey.exponent), _arrayToHex(privateKey.exponent));
+    return $$$.RSA.decrypt(encrypted.data, rsaKey);
   };
 
   $$$.encryptSymmetric = function (message, publicKey) {
     $$.Coder.ensureType("rsaKey", publicKey);
 
-    var key = $$.Symmetric.generateKey(),
-        encryptedKey = $$$.encrypt($$.Coder.encode(key), publicKey),
-        encryptedMessage = $$.Symmetric.encrypt(message, key);
+    var key = $$.Symmetric.generateKey()
+      , encryptedKey = $$$.encrypt($$.Coder.encode(key), publicKey)
+      , encryptedMessage = $$.Symmetric.encrypt(message, key);
 
     return { type: "rsaAesEncryptedData", key: encryptedKey, data: encryptedMessage };
   };
@@ -2597,20 +1813,20 @@ if (typeof(window) !== "undefined") {
     $$.Coder.ensureType("rsaKey", publicKey);
     $$.Coder.ensureType("rsaKey", privateKey);
 
-    var rsa = new RSAKey();
+    var rsaKey = new $$$.RSA.Key();
 
-    rsa.setPrivate(_arrayToHex(privateKey.modulus), _arrayToHex(publicKey.exponent), _arrayToHex(privateKey.exponent));
-    return { type: "rsaSignature", data: rsa.signString(message, "sha256") };
+    rsaKey.setPrivate(_arrayToHex(privateKey.modulus), _arrayToHex(publicKey.exponent), _arrayToHex(privateKey.exponent));
+    return { type: "rsaSignature", data: $$$.RSA.Signer.signWithSHA256(message, rsaKey) };
   };
 
   $$$.verify = function (message, signature, publicKey) {
     $$.Coder.ensureType("rsaSignature", signature);
     $$.Coder.ensureType("rsaKey", publicKey);
 
-    var rsa = new RSAKey();
+    var rsaKey = new $$$.RSA.Key();
 
-    rsa.setPublic(_arrayToHex(publicKey.modulus), _arrayToHex(publicKey.exponent));
-    return rsa.verifyString(message, signature.data);
+    rsaKey.setPublic(_arrayToHex(publicKey.modulus), _arrayToHex(publicKey.exponent));
+    return $$$.RSA.Signer.verify(message, rsaKey, signature.data);
   };
 
 })(epdRoot,
@@ -2632,6 +1848,324 @@ if (typeof(window) !== "undefined") {
   epdRoot.Crypt = epdRoot.Crypt || { },
   epdRoot.Crypt.Asymmetric = epdRoot.Crypt.Asymmetric || { },
   epdRoot.Crypt.Asymmetric.Object = epdRoot.Crypt.Asymmetric.Object || { }));
+
+(function ($, $$, $$$, $$$$) {
+  "use strict";
+
+  var // PKCS#1 (type 2, random) pad input string s to n bytes, and return a bigint
+      pkcs1pad2 = function (s, n) {
+        if (n < s.length + 11) { // TODO: fix for utf-8
+          throw(new Error("Message too long for RSA"));
+        }
+        var ba = [ ];
+        var i = s.length - 1;
+        while (i >= 0 && n > 0) {
+          var c = s.charCodeAt(i--);
+          if(c < 128) { // encode using utf-8
+            ba[--n] = c;
+          } else if ((c > 127) && (c < 2048)) {
+            ba[--n] = (c & 63) | 128;
+            ba[--n] = (c >> 6) | 192;
+          } else {
+            ba[--n] = (c & 63) | 128;
+            ba[--n] = ((c >> 6) & 63) | 128;
+            ba[--n] = (c >> 12) | 224;
+          }
+        }
+        ba[--n] = 0;
+        var rng = new SecureRandom();
+        var x = [ ];
+        while (n > 2) { // random non-zero pad
+          x[0] = 0;
+          while (x[0] == 0) {
+            rng.nextBytes(x);
+          }
+          ba[--n] = x[0];
+        }
+        ba[--n] = 2;
+        ba[--n] = 0;
+        return new BigInteger(ba);
+      }
+
+      // Undo PKCS#1 (type 2, random) padding and, if valid, return the plaintext
+    , pkcs1unpad2 = function (d, n) {
+        var b = d.toByteArray();
+        var i = 0;
+        while (i < b.length && b[i] == 0) {
+          ++i;
+        }
+        if (b.length - i != n - 1 || b[i] != 2) {
+          return null;
+        }
+        ++i;
+        while (b[i] != 0) {
+          if (++i >= b.length) {
+            return null;
+          }
+        }
+        var ret = "";
+        while (++i < b.length) {
+          var c = b[i] & 255;
+          if(c < 128) { // utf-8 decode
+            ret += String.fromCharCode(c);
+          } else if ((c > 191) && (c < 224)) {
+            ret += String.fromCharCode(((c & 31) << 6) | (b[i + 1] & 63));
+            ++i;
+          } else {
+            ret += String.fromCharCode(((c & 15) << 12) | ((b[i + 1] & 63) << 6) | (b[i + 2] & 63));
+            i += 2;
+          }
+        }
+        return ret;
+      };
+
+  // Return the PKCS#1 RSA encryption of "text" as an even-length hex string
+  $$$$.encrypt = function (text, key) {
+    var m = pkcs1pad2(text, (key.n.bitLength() + 7) >> 3);
+    if (m == null) {
+      return null;
+    }
+    var c = $$$$.doPublic(m, key);
+    if (c == null) {
+      return null;
+    }
+    var h = c.toString(16);
+    if ((h.length & 1) == 0) {
+      return h;
+    } else {
+      return "0" + h;
+    }
+  };
+
+  // Return the PKCS#1 RSA decryption of "ctext".
+  // "ctext" is an even-length hex string and the output is a plain string.
+  $$$$.decrypt = function (cipherText, key) {
+    var c = new BigInteger(cipherText, 16);
+    var m = $$$$.doPrivate(c, key);
+    if (m == null) {
+      return null;
+    }
+    return pkcs1unpad2(m, (key.n.bitLength() + 7) >> 3);
+  };
+
+  // protected
+
+  // Perform raw public operation on "x": return x^e (mod n)
+  $$$$.doPublic = function (x, key) {
+    return x.modPowInt(key.e, key.n);
+  };
+
+  // Perform raw private operation on "x": return x^d (mod n)
+  $$$$.doPrivate = function (x, key) {
+    if (key.p == null || key.q == null) {
+      return x.modPow(key.d, key.n);
+    }
+
+    // TODO: re-calculate any missing CRT params
+    var xp = x.mod(key.p).modPow(key.dmp1, key.p);
+    var xq = x.mod(key.q).modPow(key.dmq1, key.q);
+
+    while (xp.compareTo(xq) < 0) {
+      xp = xp.add(key.p);
+    }
+    return xp.subtract(xq).multiply(key.coeff).mod(key.p).multiply(key.q).add(xq);
+  };
+
+})(epdRoot,
+   epdRoot.Crypt = epdRoot.Crypt || { },
+   epdRoot.Crypt.Asymmetric = epdRoot.Crypt.Asymmetric || { },
+   epdRoot.Crypt.Asymmetric.RSA = epdRoot.Crypt.Asymmetric.RSA || { });
+
+(function ($, $$, $$$, $$$$) {
+  "use strict";
+
+  $$$$.Key = function () {
+    this.n = null;
+    this.e = 0;
+    this.d = null;
+    this.p = null;
+    this.q = null;
+    this.dmp1 = null;
+    this.dmq1 = null;
+    this.coeff = null;
+  };
+
+  // Generate a new random private key B bits long, using public expt E
+  $$$$.Key.prototype.generate = function (B, E) {
+    var rng = new SecureRandom();
+    var qs = B >> 1;
+    this.e = parseInt(E, 16);
+    var ee = new BigInteger(E, 16);
+    for (;;) {
+      for (;;) {
+        this.p = new BigInteger(B - qs, 1, rng);
+        if (this.p.subtract(BigInteger.ONE).gcd(ee).compareTo(BigInteger.ONE) == 0 && this.p.isProbablePrime(10)) {
+          break;
+        }
+      }
+      for (;;) {
+        this.q = new BigInteger(qs, 1, rng);
+        if (this.q.subtract(BigInteger.ONE).gcd(ee).compareTo(BigInteger.ONE) == 0 && this.q.isProbablePrime(10)) {
+          break;
+        }
+      }
+      if (this.p.compareTo(this.q) <= 0) {
+        var t = this.p;
+        this.p = this.q;
+        this.q = t;
+      }
+      var p1 = this.p.subtract(BigInteger.ONE);
+      var q1 = this.q.subtract(BigInteger.ONE);
+      var phi = p1.multiply(q1);
+      if (phi.gcd(ee).compareTo(BigInteger.ONE) == 0) {
+        this.n = this.p.multiply(this.q);
+        this.d = ee.modInverse(phi);
+        this.dmp1 = this.d.mod(p1);
+        this.dmq1 = this.d.mod(q1);
+        this.coeff = this.q.modInverse(this.p);
+        break;
+      }
+    }
+  };
+
+  // Set the public key fields N and e from hex strings
+  $$$$.Key.prototype.setPublic = function (N, E) {
+    if (N != null && E != null && N.length > 0 && E.length > 0) {
+      this.n = new BigInteger(N, 16);
+      this.e = parseInt(E, 16);
+    } else {
+      throw(new Error("Invalid RSA public key"));
+    }
+  };
+
+  // Set the private key fields N, e, and d from hex strings
+  $$$$.Key.prototype.setPrivate = function (N, E, D) {
+    if (N != null && E != null && N.length > 0 && E.length > 0) {
+      this.n = new BigInteger(N, 16);
+      this.e = parseInt(E, 16);
+      this.d = new BigInteger(D, 16);
+    } else {
+      throw(new Error("Invalid RSA private key"));
+    }
+  };
+
+  // Set the private key fields N, e, d and CRT params from hex strings
+  $$$$.Key.prototype.setPrivateEx = function (N, E, D, P, Q, DP, DQ, C) {
+    if (N != null && E != null && N.length > 0 && E.length > 0) {
+      this.n = new BigInteger(N, 16);
+      this.e = parseInt(E, 16);
+      this.d = new BigInteger(D, 16);
+      this.p = new BigInteger(P, 16);
+      this.q = new BigInteger(Q, 16);
+      this.dmp1 = new BigInteger(DP, 16);
+      this.dmq1 = new BigInteger(DQ, 16);
+      this.coeff = new BigInteger(C, 16);
+    } else {
+      throw(new Error("Invalid RSA private key"));
+    }
+  };
+
+})(epdRoot,
+   epdRoot.Crypt = epdRoot.Crypt || { },
+   epdRoot.Crypt.Asymmetric = epdRoot.Crypt.Asymmetric || { },
+   epdRoot.Crypt.Asymmetric.RSA = epdRoot.Crypt.Asymmetric.RSA || { });
+
+(function ($, $$, $$$, $$$$, $$$$$) {
+  "use strict";
+
+  var _RSASIGN_DIHEAD = {
+        sha1: "3021300906052b0e03021a05000414",
+        sha256: "3031300d060960864801650304020105000420",
+        sha384: "3041300d060960864801650304020205000430",
+        sha512: "3051300d060960864801650304020305000440",
+        md2: "3020300c06082a864886f70d020205000410",
+        md5: "3020300c06082a864886f70d020505000410",
+        ripemd160: "3021300906052b2403020105000414"
+      }
+    , _RSASIGN_HASHHEXFUNC = {
+        sha256: function (s) {
+          return CryptoJS.enc.Hex.stringify(CryptoJS.SHA256(s));
+        }
+      }
+    , _RE_HEXDECONLY = new RegExp("")
+
+    , _getHexPaddedDigestInfoForString = function (s, keySize, hashAlg) {
+        var pmStrLen = keySize / 4;
+        var hashFunc = _RSASIGN_HASHHEXFUNC[hashAlg];
+        var sHashHex = hashFunc(s);
+
+        var sHead = "0001";
+        var sTail = "00" + _RSASIGN_DIHEAD[hashAlg] + sHashHex;
+        var sMid = "";
+        var fLen = pmStrLen - sHead.length - sTail.length;
+        for (var i = 0; i < fLen; i += 2) {
+          sMid += "ff";
+        }
+        return sHead + sMid + sTail;
+      }
+    , _zeroPaddingOfSignature = function (hex, bitLength) {
+        var s = "";
+        var nZero = bitLength / 4 - hex.length;
+        for (var i = 0; i < nZero; i++) {
+          s = s + "0";
+        }
+        return s + hex;
+      }
+    , _getAlgNameAndHashFromHexDisgestInfo = function (hDigestInfo) {
+        for (var algorithmName in _RSASIGN_DIHEAD) {
+          if (_RSASIGN_DIHEAD.hasOwnProperty(algorithmName)) {
+            var head = _RSASIGN_DIHEAD[algorithmName];
+            var len = head.length;
+            if (hDigestInfo.substring(0, len) == head) {
+              return [ algorithmName, hDigestInfo.substring(len) ];
+            }
+          }
+        }
+        return [];
+      };
+
+  _RE_HEXDECONLY.compile("[^0-9a-f]", "gi");
+
+  $$$$$.sign = function (text, key, hashAlgorithm) {
+    var hPM = _getHexPaddedDigestInfoForString(text, key.n.bitLength(), hashAlgorithm);
+    var biPaddedMessage = new BigInteger(hPM, 16);
+    var biSign = $$$$.doPrivate(biPaddedMessage, key);
+    var hexSign = biSign.toString(16);
+    return _zeroPaddingOfSignature(hexSign, key.n.bitLength());
+  };
+
+  $$$$$.signWithSHA1 = function (text, key) {
+    return $$$$$.sign(text, key, "sha1");
+  };
+
+  $$$$$.signWithSHA256 = function (text, key) {
+    return $$$$$.sign(text, key, "sha256");
+  };
+
+  $$$$$.verify = function (text, key, signature) {
+    signature = signature.replace(_RE_HEXDECONLY, "");
+    // if (signature.length != key.n.bitLength() / 4) return 0;
+    signature = signature.replace(/[ \n]+/g, "");
+    var biSig = new BigInteger(signature, 16);
+    var biDecryptedSig = $$$$.doPublic(biSig, key);
+    var hDigestInfo = biDecryptedSig.toString(16).replace(/^1f+00/, '');
+    var digestInfoAry = _getAlgNameAndHashFromHexDisgestInfo(hDigestInfo);
+
+    if (digestInfoAry.length == 0) {
+      return false;
+    }
+    var algName = digestInfoAry[0];
+    var diHashValue = digestInfoAry[1];
+    var ff = _RSASIGN_HASHHEXFUNC[algName];
+    var msgHashValue = ff(text);
+    return (diHashValue == msgHashValue);
+  };
+
+})(epdRoot,
+   epdRoot.Crypt = epdRoot.Crypt || { },
+   epdRoot.Crypt.Asymmetric = epdRoot.Crypt.Asymmetric || { },
+   epdRoot.Crypt.Asymmetric.RSA = epdRoot.Crypt.Asymmetric.RSA || { },
+   epdRoot.Crypt.Asymmetric.RSA.Signer = epdRoot.Crypt.Asymmetric.RSA.Signer || { });
 /*global CryptoJS:false */
 
 
@@ -2795,7 +2329,7 @@ if (typeof(window) !== "undefined") {
   };
 
   $$$.ensureType = function (type, value) {
-    if (type !== value.type) {
+    if (!value || type !== value.type) {
       throw(new Error("The value " + JSON.stringify(value) + " need to be of type " + type + "!"));
     }
   };
@@ -2956,7 +2490,7 @@ if (typeof(window) !== "undefined") {
         if (profile && profile.id) {
           var keys = foreignProfile.contacts[profile.id] ? foreignProfile.contacts[profile.id].keys : undefined;
           $.Iterator.each(foreignProfile.sections, function (id, encryptedSection) {
-            if ($.Iterator.include($.Sections.openIds, id)) {
+            if ($.Collection.include($.Sections.openIds, id)) {
               foreignProfile.sections[id] = encryptedSection;
             } else {
               var key = keys ? keys[id] : undefined;
@@ -2986,9 +2520,9 @@ if (typeof(window) !== "undefined") {
 (function ($, $$, $$$) {
   "use strict";
 
-  var _forContacts = function (contactIds, profiles, handler) {
+  var _forContacts = function (contactIds, profileGetFunction, handler) {
         $.Iterator.each(contactIds, function (index, contactId) {
-          var contactProfile = profiles[contactId];
+          var contactProfile = profileGetFunction(contactId);
           if (contactProfile) {
             handler(contactId, contactProfile);
           }
@@ -2999,10 +2533,10 @@ if (typeof(window) !== "undefined") {
     return $.Modules.ids(foreignProfile, sectionId);
   };
 
-  $$$.contents = function (profile, id, profiles) {
+  $$$.contents = function (profile, id, profileGetFunction) {
     var contents = { };
 
-    _forContacts($.Contacts.ids(profile), profiles, function (contactId, contactProfile) {
+    _forContacts($.Contacts.ids(profile), profileGetFunction, function (contactId, contactProfile) {
       var sectionIds = $.Sections.openIds.concat($.Sections.ids(contactProfile));
       $.Iterator.each(sectionIds, function (index, sectionId) {
         if ($.Modules.exists(contactProfile, sectionId, id)) {
@@ -3016,10 +2550,10 @@ if (typeof(window) !== "undefined") {
     return contents;
   };
 
-  $$$.contentsForSection = function (profile, sectionId, id, profiles) {
+  $$$.contentsForSection = function (profile, sectionId, id, profileGetFunction) {
     var contents = { };
 
-    _forContacts($.Contacts.idsBySectionId(profile, sectionId), profiles, function (contactId, contactProfile) {
+    _forContacts($.Contacts.idsBySectionId(profile, sectionId), profileGetFunction, function (contactId, contactProfile) {
       if ($.Modules.exists(contactProfile, sectionId, id)) {
         var module = $.Modules.byId(contactProfile, sectionId, id);
         contents[contactId] = module.content;
@@ -3057,12 +2591,12 @@ if (typeof(window) !== "undefined") {
     return $.Sections.Synchronisable.isDelegated(foreignProfile, id);
   };
 
-  $$$$.offered = function (profiles, profile) {
+  $$$$.offered = function (profile, profileGetFunction) {
     var contactIds = $.Contacts.ids(profile)
       , result = { };
 
     $.Iterator.each(contactIds, function (_, contactId) {
-      var foreignProfile = profiles[ contactId ];
+      var foreignProfile = profileGetFunction(contactId);
       if (foreignProfile) {
         var hangOutIds = $$$$.ids(foreignProfile);
         $.Iterator.each(hangOutIds, function (_, hangOutId) {
@@ -3077,7 +2611,7 @@ if (typeof(window) !== "undefined") {
     return result;
   };
 
-  $$$$.differences = function (profiles, profile, id) {
+  $$$$.differences = function (profile, id, profileGetFunction) {
     var memberIds = $.Sections.Synchronisable.memberIds(profile, id)
       , moduleIds = $.Modules.ids(profile, id)
       , notParticipating = { }
@@ -3099,19 +2633,19 @@ if (typeof(window) !== "undefined") {
         };
 
     $.Iterator.each(memberIds, function (_, memberId) {
-      var foreignProfile = profiles[memberId];
+      var foreignProfile = profileGetFunction(memberId);
       if (memberId !== profile.id && foreignProfile && !$$$$.isDelegated(foreignProfile, id)) {
         if ($$$$.exists(foreignProfile, id)) {
           var foreignMemberIds = $$$$.memberIds(foreignProfile, id)
-            , addMemberIds = $.Iterator.without(foreignMemberIds, memberIds)
-            , removeMemberIds = $.Iterator.without(memberIds, foreignMemberIds)
+            , addMemberIds = $.Collection.without(foreignMemberIds, memberIds)
+            , removeMemberIds = $.Collection.without(memberIds, foreignMemberIds)
 
             , foreignModuleIds = $$.Modules.ids(foreignProfile, id)
-            , addModuleIds = $.Iterator.without(foreignModuleIds, moduleIds)
-            , removeModuleIds = $.Iterator.without(moduleIds, foreignModuleIds);
+            , addModuleIds = $.Collection.without(foreignModuleIds, moduleIds)
+            , removeModuleIds = $.Collection.without(moduleIds, foreignModuleIds);
 
-          $.Iterator.remove(addMemberIds, profile.id);
-          $.Iterator.remove(removeMemberIds, foreignProfile.id);
+          $.Collection.remove(addMemberIds, profile.id);
+          $.Collection.remove(removeMemberIds, foreignProfile.id);
 
           pushMember(addMembers, addMemberIds, memberId);
           pushMember(removeMembers, removeMemberIds, memberId);
@@ -3141,7 +2675,7 @@ if (typeof(window) !== "undefined") {
   "use strict";
 
   $$$.ids = function (profile) {
-    return $.Iterator.select($$.ids(profile), function (index, id) {
+    return $.Collection.select($$.ids(profile), function (index, id) {
       return $$$.isSynchronisable(profile, id);
     });
   };
@@ -3173,7 +2707,7 @@ if (typeof(window) !== "undefined") {
   };
 
   $$$.memberIds = function (profile, id) {
-    return $.Iterator.select($.Contacts.ids(profile), function (_, contactId) {
+    return $.Collection.select($.Contacts.ids(profile), function (_, contactId) {
       return $$$.isMember(profile, contactId, id);
     });
   };
@@ -3194,13 +2728,13 @@ if (typeof(window) !== "undefined") {
     }
 
     var section = $$$.byId(profile, id);
-    $.Iterator.remove(section.members, contactId);
+    $.Collection.remove(section.members, contactId);
     return $$.removeMember(profile, contactId, id);
   };
 
   $$$.isMember = function (profile, contactId, id) {
     var section = $$$.byId(profile, id);
-    return $$.isMember(profile, contactId, id) && $.Iterator.include(section.members, contactId);
+    return $$.isMember(profile, contactId, id) && $.Collection.include(section.members, contactId);
   };
 
   // high level
@@ -3240,17 +2774,17 @@ if (typeof(window) !== "undefined") {
     return !!hangOut && !!hangOut.administrationDelegatedTo;
   };
 
-  $$$.followAllDelegations = function (profile, profiles) {
+  $$$.followAllDelegations = function (profile, profileGetFunction) {
     var result = { };
 
     $.Iterator.each($$$.ids(profile), function (_, id) {
-      result[ id ] = $$$.followDelegation(profile, profiles, id);
+      result[ id ] = $$$.followDelegation(profile, id, profileGetFunction);
     });
 
     return result;
   };
 
-  $$$.followDelegation = function (profile, profiles, id) {
+  $$$.followDelegation = function (profile, id, profileGetFunction) {
     var result = { }
 
       , findDelegationTargetProfile = function () {
@@ -3258,7 +2792,7 @@ if (typeof(window) !== "undefined") {
 
           while (result && $$$.isDelegated(result, id)) {
             var nextProfileId = $$$.delegatedTo(result, id)
-              , nextProfile = profiles[ nextProfileId ];
+              , nextProfile = profileGetFunction(nextProfileId);
 
             if (nextProfileId === profile.id) {
               return profile;
@@ -3285,16 +2819,16 @@ if (typeof(window) !== "undefined") {
           $$$.delegateTo(profile, targetProfile.id, id);
         }
 
-        if ($.Iterator.include($.Foreign.Sections.Synchronisable.ids(targetProfile), id)) {
+        if ($.Collection.include($.Foreign.Sections.Synchronisable.ids(targetProfile), id)) {
           var memberIds = [ profile.id ].concat($$$.memberIds(profile, id))
             , targetMemberIds = [ targetProfile.id ].concat($.Foreign.Sections.Synchronisable.memberIds(targetProfile, id))
-            , addMemberIds = $.Iterator.without(targetMemberIds, memberIds)
-            , removeMemberIds = $.Iterator.without(memberIds, targetMemberIds)
+            , addMemberIds = $.Collection.without(targetMemberIds, memberIds)
+            , removeMemberIds = $.Collection.without(memberIds, targetMemberIds)
 
             , moduleIds = $.Modules.ids(profile, id)
             , targetModuleIds = $.Foreign.Modules.ids(targetProfile, id)
-            , addModuleIds = $.Iterator.without(targetModuleIds, moduleIds)
-            , removeModuleIds = $.Iterator.without(moduleIds, targetModuleIds);
+            , addModuleIds = $.Collection.without(targetModuleIds, moduleIds)
+            , removeModuleIds = $.Collection.without(moduleIds, targetModuleIds);
 
           if (addMemberIds.length > 0) { result.addMembers = addMemberIds; }
           if (removeMemberIds.length > 0) { result.removeMembers = removeMemberIds; }
@@ -3318,10 +2852,6 @@ if (typeof(window) !== "undefined") {
 (function ($, $$) {
   "use strict";
 
-  var _lookupProfile = function (profile, profiles, id) {
-        return profiles[id] ? profiles[id] : { id: id, publicKey: $$.publicKeyForContactId(profile, id) };
-      };
-
   $$.ids = function (profile) {
     var ids = [ ];
     $.Iterator.each(profile.contacts, function (id) {
@@ -3333,7 +2863,7 @@ if (typeof(window) !== "undefined") {
   };
 
   $$.idsBySectionId = function (profile, sectionId) {
-    return $.Iterator.select($$.ids(profile), function (index, id) {
+    return $.Collection.select($$.ids(profile), function (index, id) {
       return !!profile.contacts[id].keys[sectionId];
     });
   };
@@ -3374,12 +2904,12 @@ if (typeof(window) !== "undefined") {
     return profile;
   };
 
-  $$.ensureAdded = function (profile, ids, profiles) {
+  $$.ensureAdded = function (profile, ids, profileGetFunction) {
     var contactIds = $$.ids(profile);
 
     $.Iterator.each(ids, function (_, id) {
-      var contactProfile = profiles[ id ];
-      if (contactProfile && !$.Iterator.include(contactIds, id)) {
+      var contactProfile = profileGetFunction(id);
+      if (contactProfile && !$.Collection.include(contactIds, id)) {
         profile = $$.add(profile, contactProfile.id, contactProfile.publicKey);
       }
     });
@@ -3391,7 +2921,7 @@ if (typeof(window) !== "undefined") {
     var contactIds = $$.ids(profile);
 
     $.Iterator.each(ids, function (_, id) {
-      if ($.Iterator.include(contactIds, id)) {
+      if ($.Collection.include(contactIds, id)) {
         profile = $$.remove(profile, id);
       }
     });
@@ -3433,7 +2963,7 @@ if (typeof(window) !== "undefined") {
 
   var _encryptSections = function (profile) {
         $.Iterator.each(profile.sections, function (id, section) {
-          if ($.Iterator.include($.Sections.openIds, id)) {
+          if ($.Collection.include($.Sections.openIds, id)) {
             profile.sections[id] = section;
           } else {
             var key = $.Sections.findKey(profile.contacts, id);
@@ -3545,7 +3075,7 @@ if (typeof(window) !== "undefined") {
         var keys = profile.contacts[profile.id] ? profile.contacts[profile.id].keys : undefined;
         if (!keys) { return; }
         $.Iterator.each(profile.sections, function (id, encryptedSection) {
-          if ($.Iterator.include($.Sections.openIds, id)) {
+          if ($.Collection.include($.Sections.openIds, id)) {
             profile.sections[id] = encryptedSection;
           } else {
             var key = keys[id];
@@ -3585,7 +3115,7 @@ if (typeof(window) !== "undefined") {
 
   $$.ids = function (profile, sectionId) {
     var section = $.Sections.byId(profile, sectionId);
-    return section ? $.Iterator.keys(section.modules) : [ ];
+    return section ? $.Object.keys(section.modules) : [ ];
   };
 
   $$.exists = function (profile, sectionId, id) {
@@ -3603,7 +3133,7 @@ if (typeof(window) !== "undefined") {
   $$.ensureOnly = function (profile, sectionId, ids) {
     // remove modules, that are not on the list
     $.Iterator.each($$.ids(profile, sectionId), function (index, id) {
-      if (!$.Iterator.include(ids, id)) {
+      if (!$.Collection.include(ids, id)) {
         profile = $$.remove(profile, sectionId, id);
       }
     });
@@ -3621,7 +3151,7 @@ if (typeof(window) !== "undefined") {
   $$.ensureAdded = function (profile, sectionId, ids) {
     var moduleIds = $$.ids(profile, sectionId);
     $.Iterator.each(ids, function (_, id) {
-      if (!$.Iterator.include(moduleIds, id)) {
+      if (!$.Collection.include(moduleIds, id)) {
         profile = $$.add(profile, sectionId, id);
       }
     });
@@ -3631,7 +3161,7 @@ if (typeof(window) !== "undefined") {
   $$.ensureRemoved = function (profile, sectionId, ids) {
     var moduleIds = $$.ids(profile, sectionId);
     $.Iterator.each(ids, function (_, id) {
-      if ($.Iterator.include(moduleIds, id)) {
+      if ($.Collection.include(moduleIds, id)) {
         profile = $$.remove(profile, sectionId, id);
       }
     });
@@ -3686,7 +3216,7 @@ if (typeof(window) !== "undefined") {
   $$.ids = function (profile) {
     var results = [ ];
     $.Iterator.each(profile.sections, function (id) {
-      if (!$.Iterator.include($$.fixedIds, id)) {
+      if (!$.Collection.include($$.fixedIds, id)) {
         results.push(id);
       }
     });
@@ -3726,7 +3256,7 @@ if (typeof(window) !== "undefined") {
   };
 
   $$.memberIds = function (profile, id) {
-    return $.Iterator.select($.Contacts.ids(profile), function (_, contactId) {
+    return $.Collection.select($.Contacts.ids(profile), function (_, contactId) {
       return $$.isMember(profile, contactId, id);
     });
   };
@@ -3751,21 +3281,21 @@ if (typeof(window) !== "undefined") {
     }
 
     var container = profile.contacts[contactId];
-    $.Iterator.remove(container.sections, id);
+    $.Collection.remove(container.sections, id);
     delete(container.keys[id]);
 
     return profile;
   };
 
   $$.isMember = function (profile, contactId, id) {
-    return ($.Iterator.include($$.openIds, id)) ||
+    return ($.Collection.include($$.openIds, id)) ||
            (!!profile.contacts[contactId] &&
              !!profile.contacts[contactId].keys &&
              !!profile.contacts[contactId].keys[id]);
   };
 
   $$.findKey = function (contacts, id) {
-    var result = $.Iterator.detect(contacts, function (_, container) {
+    var result = $.Collection.detect(contacts, function (_, container) {
       return !!container.keys && !!container.keys[id];
     });
     return result ? result.keys[id] : undefined;
@@ -3797,7 +3327,7 @@ if (typeof(window) !== "undefined") {
     base = base || $$;
 
     // remove member ids, that are not on the list
-    base.removeMembers(profile, $.Iterator.without(base.memberIds(profile, id), contactIds), id, base);
+    base.removeMembers(profile, $.Collection.without(base.memberIds(profile, id), contactIds), id, base);
 
     // add member ids, that are not allowed yet
     base.addMembers(profile, contactIds, id, base);
