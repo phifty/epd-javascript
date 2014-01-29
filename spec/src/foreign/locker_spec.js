@@ -29,7 +29,7 @@ describe("Foreign.Locker", function () {
       var otherProfile = epdRoot.Generator.generate()
         , unlockProfile = namespace.unlock(fixtures.lockedProfile(), otherProfile);
 
-      expect(unlockProfile.contacts[ fixtures.anotherProfile().id ]).toEqual({ publicKey: fixtures.anotherProfile().publicKey });
+      expect(unlockProfile.contacts[ fixtures.anotherProfile().id ]).toEqual({ });
     });
 
     it("should return a profile where the right keys are unlocked", function () {

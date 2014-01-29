@@ -3,10 +3,7 @@ describe("Contacts", function () {
 
   var namespace = epdRoot.Contacts
     , profile
-    , otherProfile
-    , profileGetFunction = function (id) {
-        return otherProfile && otherProfile.id === id ? otherProfile : undefined;
-      };
+    , otherProfile;
 
   beforeEach(function () {
     profile = epdRoot.Object.clone(fixtures.profile());
@@ -34,15 +31,6 @@ describe("Contacts", function () {
 
   });
 
-  describe("#publicKeyForContactId", function () {
-
-    it("should return the public key for the given contact id", function () {
-      var publicKey = namespace.publicKeyForContactId(profile, fixtures.anotherProfile().id);
-      expect(publicKey).toEqual(fixtures.anotherProfile().publicKey);
-    });
-
-  });
-
   describe("#keysForContactId", function () {
 
     it("should return the keys for the given contact", function () {
@@ -64,17 +52,17 @@ describe("Contacts", function () {
   describe("#add", function () {
 
     it("should add the given profile to the contacts", function () {
-      profile = namespace.add(profile, otherProfile.id, otherProfile.publicKey);
+      profile = namespace.add(profile, otherProfile.id);
       expect(namespace.ids(profile)).toContain(otherProfile.id);
     });
 
     it("should do nothing if the contact has been added before", function () {
-      profile = namespace.add(profile, fixtures.anotherProfile().id, fixtures.anotherProfile().publicKey);
+      profile = namespace.add(profile, fixtures.anotherProfile().id);
       expect(namespace.ids(profile)).toEqual([ fixtures.anotherProfile().id ]);
     });
 
     it("should not add a sections key if the contact is the profile owner", function () {
-      profile = namespace.add(profile, profile.id, profile.publicKey);
+      profile = namespace.add(profile, profile.id);
       expect(profile.contacts[ profile.id ].sections).toBeUndefined();
     });
 
@@ -92,7 +80,7 @@ describe("Contacts", function () {
   describe("#ensureAdded", function () {
 
     it("should add the given contact if missing", function () {
-      profile = namespace.ensureAdded(profile, [ otherProfile.id ], profileGetFunction);
+      profile = namespace.ensureAdded(profile, [ otherProfile.id ]);
       expect(namespace.ids(profile)).toContain(otherProfile.id);
     });
 

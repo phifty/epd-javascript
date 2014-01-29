@@ -151,7 +151,7 @@ var fixtures = {
 
   lockedProfile: function () {
     return this._getOrGenerate("lockedProfile", function () {
-      return epdRoot.Locker.lock(this.profile(), this.password());
+      return epdRoot.Locker.lock(this.profile(), this.password(), this.publicKeyResolver());
     });
   },
 
@@ -164,6 +164,23 @@ var fixtures = {
   profileUnlockedByStranger: function () {
     return this._getOrGenerate("profileUnlockedByStranger", function () {
       return epdRoot.Foreign.Locker.unlock(this.lockedProfile(), this.anotherProfile());
+    });
+  },
+
+  publicKeyResolver: function () {
+    return this._getOrGenerate("publicKeyResolver", function () {
+      var scope = this;
+      return function (documentId) {
+        switch (documentId) {
+          case scope.profile().id:
+            return scope.profile().publicKey;
+          case scope.anotherProfile().id:
+            return scope.anotherProfile().publicKey;
+          default:
+            console.error("cannot resolve public key of id " + documentId + " --- " + scope.profile().id);
+            return null;
+        }
+      };
     });
   },
 

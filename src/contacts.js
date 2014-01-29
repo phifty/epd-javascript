@@ -18,10 +18,6 @@
     });
   };
 
-  $$.publicKeyForContactId = function (profile, contactId) {
-    return profile.contacts[contactId].publicKey;
-  };
-
   $$.keysForContactId = function (profile, contactId) {
     return profile.contacts[contactId].keys;
   };
@@ -30,17 +26,14 @@
     return profile.contacts[contactId].keys[sectionId];
   };
 
-  $$.add = function (profile, id, publicKey) {
+  $$.add = function (profile, id) {
     var contacts = profile.contacts;
 
     if (contacts[id]) {
       return profile;
     }
 
-    contacts[id] = {
-      publicKey: publicKey,
-      keys: { }
-    };
+    contacts[id] = { keys: { } };
 
     if (profile.id !== id) {
       contacts[id].sections = [ ];
@@ -54,13 +47,12 @@
     return profile;
   };
 
-  $$.ensureAdded = function (profile, ids, profileGetFunction) {
+  $$.ensureAdded = function (profile, ids) {
     var contactIds = $$.ids(profile);
 
     $.Iterator.each(ids, function (_, id) {
-      var contactProfile = profileGetFunction(id);
-      if (contactProfile && !$.Collection.include(contactIds, id)) {
-        profile = $$.add(profile, contactProfile.id, contactProfile.publicKey);
+      if (!$.Collection.include(contactIds, id)) {
+        profile = $$.add(profile, id);
       }
     });
 

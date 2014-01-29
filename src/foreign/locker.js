@@ -12,7 +12,7 @@
 
     , _decryptContactKeys = function (foreignProfile, profile) {
         $.Iterator.each(foreignProfile.contacts, function (contactId, container) {
-          if (profile && profile.publicKey && container.publicKey === $.Crypt.Coder.encode(profile.publicKey)) {
+          if (profile && profile.id && profile.id === contactId) {
             container.keys =
               $.Crypt.Asymmetric.Object.decrypt(
                 $.Crypt.Coder.decode(container.keys), profile.publicKey, profile.privateKey);
@@ -20,7 +20,6 @@
               container.keys[id] = $.Crypt.Coder.decode(key);
             });
           } else {
-            container.publicKey = $.Crypt.Coder.decode(container.publicKey);
             delete(container.keys);
             delete(container.sections);
           }

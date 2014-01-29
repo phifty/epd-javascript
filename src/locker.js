@@ -14,26 +14,28 @@
         });
       }
 
-    , _encryptContactKeys = function (profile, closedSectionKey) {
+    , _encryptContactKeys = function (profile, closedSectionKey, publicKeyResolver) {
         $.Iterator.each(profile.contacts, function (contactId, contact) {
-          var keys = contact.keys;
-          if (keys) {
-            $.Iterator.each(keys, function (id, key) {
-              keys[id] = $.Crypt.Coder.encode(key);
-            });
-            contact.keys = $.Crypt.Coder.encode(
-                               $.Crypt.Asymmetric.Object.encrypt(keys, contact.publicKey));
-          }
-          contact.publicKey = $.Crypt.Coder.encode(contact.publicKey);
+          var publicKey = publicKeyResolver(contactId);
+          if (publicKey) {
+            var keys = contact.keys;
+            if (keys) {
+              $.Iterator.each(keys, function (id, key) {
+                keys[id] = $.Crypt.Coder.encode(key);
+              });
+              contact.keys = $.Crypt.Coder.encode(
+                $.Crypt.Asymmetric.Object.encrypt(keys, publicKey));
+            }
 
-          // fix for old profiles that still have this obsolete sections key
-          if (contactId === profile.id) {
-            delete(contact.sections);
-          }
+            // fix for old profiles that still have this obsolete sections key
+            if (contactId === profile.id) {
+              delete(contact.sections);
+            }
 
-          if (contact.sections) {
-            contact.sections = $.Crypt.Coder.encode(
-                                 $.Crypt.Symmetric.Object.encrypt(contact.sections, closedSectionKey));
+            if (contact.sections) {
+              contact.sections = $.Crypt.Coder.encode(
+                $.Crypt.Symmetric.Object.encrypt(contact.sections, closedSectionKey));
+            }
           }
         });
       }
@@ -88,7 +90,6 @@
 
     , _decryptOwnContactKeys = function (profile) {
         var contact = profile.contacts[profile.id];
-        contact.publicKey = $.Crypt.Coder.decode(contact.publicKey);
         contact.keys = $.Crypt.Asymmetric.Object.decrypt(
                          $.Crypt.Coder.decode(contact.keys), profile.publicKey, profile.privateKey);
         $.Iterator.each(contact.keys, function (id, key) {
@@ -103,7 +104,6 @@
               contact.sections = $.Crypt.Symmetric.Object.decrypt(
                                    $.Crypt.Coder.decode(contact.sections), closedSectionKey);
             }
-            contact.publicKey = $.Crypt.Coder.decode(contact.publicKey);
             contact.keys = { };
             $.Iterator.each(contact.sections, function (index, sectionId) {
               contact.keys[sectionId] = $.Sections.findKey(profile.contacts, sectionId);
@@ -127,10 +127,10 @@
         });
       };
 
-  $$.lock = function (unlockedProfile, password) {
+  $$.lock = function (unlockedProfile, password, publicKeyResolver) {
     var profile = $.Object.clone(unlockedProfile);
     _encryptSections(profile);
-    _encryptContactKeys(profile, $.Sections.findKey(unlockedProfile.contacts, "closed"));
+    _encryptContactKeys(profile, $.Sections.findKey(unlockedProfile.contacts, "closed"), publicKeyResolver);
     _encryptPrivateKey(profile, password);
     _encodePublicKey(profile);
     _sign(profile, unlockedProfile.publicKey, unlockedProfile.privateKey);

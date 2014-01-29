@@ -9,7 +9,7 @@ describe("Locker", function () {
 
     beforeEach(function () {
       if (!lockedProfile) {
-        lockedProfile = namespace.lock(fixtures.profile(), fixtures.password());
+        lockedProfile = namespace.lock(fixtures.profile(), fixtures.password(), fixtures.publicKeyResolver());
       }
     });
 
@@ -95,10 +95,6 @@ describe("Locker", function () {
 
     it("should decrypt the closed section", function () {
       expect(epdRoot.Sections.byId(unlockedProfile, "closed")).toEqual({ modules: { } });
-    });
-
-    it("should decode each contact public key", function () {
-      expect(epdRoot.Contacts.publicKeyForContactId(unlockedProfile, fixtures.anotherProfile().id)).toBeOfType("rsaKey");
     });
 
     it("should reconstruct each contact keys", function () {

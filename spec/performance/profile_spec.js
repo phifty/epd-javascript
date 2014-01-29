@@ -4,9 +4,8 @@ describe("Performance", function () {
   describe("Profile", function () {
 
     var profile
-      , keyPair
       , profileSize = function () {
-          var lockedProfile = epdRoot.Locker.lock(profile, fixtures.password())
+          var lockedProfile = epdRoot.Locker.lock(profile, fixtures.password(), fixtures.publicKeyResolver())
             , lockedProfileString = JSON.stringify(lockedProfile);
 
           return lockedProfileString.length;
@@ -14,10 +13,7 @@ describe("Performance", function () {
       , difference = function (a, b) { return b - a; };
 
     beforeEach(function () {
-      if (!profile) {
-        profile = epdRoot.Object.clone(fixtures.profile());
-        keyPair = epdRoot.Crypt.Asymmetric.generateKeyPair();
-      }
+      profile = epdRoot.Object.clone(fixtures.profile());
     });
 
     it("should not grow to much if new contacts are added", function () {
@@ -26,7 +22,7 @@ describe("Performance", function () {
       sizes.push(profileSize());
       for (var index = 0; index < 10; index++) {
         var contactProfileId = epdRoot.Crypt.Object.generateId();
-        epdRoot.Contacts.add(profile, contactProfileId, keyPair.publicKey);
+        epdRoot.Contacts.add(profile, contactProfileId);
         sizes.push(profileSize());
       }
 
@@ -46,7 +42,9 @@ describe("Performance", function () {
 
       sizes.push(profileSize());
       for (var index = 0; index < 10; index++) {
-        profile = epdRoot.Locker.unlock(epdRoot.Locker.lock(profile, fixtures.password()), fixtures.password());
+        profile = epdRoot.Locker.unlock(
+                    epdRoot.Locker.lock(profile, fixtures.password(), fixtures.publicKeyResolver()),
+                    fixtures.password());
         sizes.push(profileSize());
       }
 
